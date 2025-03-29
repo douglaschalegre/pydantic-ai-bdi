@@ -397,12 +397,12 @@ class BDI(Agent, Generic[T]):
 
         # Check if there are steps to execute
         while intention.current_step < len(intention.steps):
-            # TODO:
-            # Execute current step (in a real implementation, this would do something)
-            # For now, just increment the step
             print(
                 f"{bcolors.OKCYAN}Executing step: {intention.steps[intention.current_step]}{bcolors.ENDC}"
             )
+            # TODO:
+            # Execute current step (in a real implementation, this would do something)
+            # For now, just increment the step
             intention.increment_current_step(self.log_states)
             if intention.current_step >= len(intention.steps):
                 for desire in self.desires:
@@ -459,10 +459,7 @@ class BDI(Agent, Generic[T]):
             types=["beliefs", "desires", "intentions"],
             message="States before starting BDI cycle",
         )
-        self.log_states(
-            types=[],
-            message="\nBDI cycle starting...",
-        )
+        print(f"{bcolors.HEADER}\nBDI cycle starting...{bcolors.ENDC}")
 
         if perception:
             await self.update_beliefs(perception)
