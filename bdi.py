@@ -13,6 +13,7 @@ from enum import Enum
 from pydantic import BaseModel, Field
 from collections import deque
 from pydantic_ai import Agent
+from pydantic_ai.tools import AgentDepsT
 from util import bcolors
 
 T = TypeVar("T")
@@ -152,6 +153,7 @@ class Intention(BaseModel):
     steps: List[str] = Field(default_factory=list)
     current_step: int = 0
     status: DesireStatus = DesireStatus.ACTIVE
+    deps: AgentDepsT | None = None
 
     def increment_current_step(self, log_states: Callable[[], None]):
         self.current_step += 1
@@ -401,6 +403,7 @@ class BDI(Agent, Generic[T]):
                 f"{bcolors.OKCYAN}Executing step: {intention.steps[intention.current_step]}{bcolors.ENDC}"
             )
             # TODO:
+            await self.run(intention.steps[intention.current_step], deps=intention.deps)
             # Execute current step (in a real implementation, this would do something)
             # For now, just increment the step
             intention.increment_current_step(self.log_states)
