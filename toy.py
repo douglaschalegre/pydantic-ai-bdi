@@ -1,8 +1,10 @@
-from bdi import BDI, Belief, BeliefSet, Desire, Intention
+from bdi import BDI, Belief, BeliefSet, Desire, Intention, IntentionStep
 from datetime import datetime
-from typing import List
+from typing import List, Dict, Any
 import asyncio
-from util import bcolors
+from dataclasses import dataclass
+import random
+from pydantic_ai.tools import RunContext
 
 
 async def main():
@@ -11,24 +13,56 @@ async def main():
     # Create the agent
     agent = BDI("openai:gpt-4")
 
-    async def temperature_handler(data: dict, beliefs: BeliefSet) -> None:
-        """Define perception handler for temperature"""
-        if "temperature" in data:
-            beliefs.add(
-                Belief(
-                    name="room_temperature",
-                    value=data["temperature"],
-                    source="temperature_sensor",
-                    timestamp=datetime.now().timestamp(),
-                )
-            )
+    @dataclass
+    class Temperature:
+        value: float
+        unit: str = "C"
 
+    class TemperatureDatabase:
+        @classmethod
+        def get_current_temperature(cls) -> Temperature:
+            value = random.randint(15, 30)
+            return Temperature(value)
+
+        @classmethod
+        def check_heating_system(cls) -> Dict[str, Any]:
+            return {"status": "operational", "efficiency": 0.85}
+
+        @classmethod
+        def check_cooling_system(cls) -> Dict[str, Any]:
+            return {"status": "operational", "efficiency": 0.9}
+
+        @classmethod
+        def adjust_hvac(cls, mode: str, target_temp: float) -> Dict[str, Any]:
+            return {
+                "success": True,
+                "mode": mode,
+                "target_temperature": target_temp,
+                "estimated_time_minutes": 5,
+            }
+
+    # Register handlers using the new decorators
+    @agent.perception_handler
+    async def temperature_handler(data: Temperature, beliefs: BeliefSet) -> None:
+        """Define perception handler for temperature"""
+        print(f"Temperature data: {data}")
+        beliefs.add(
+            Belief(
+                name="room_temperature",
+                value=data,
+                source="temperature_sensor",
+                timestamp=datetime.now().timestamp(),
+            )
+        )
+
+    @agent.desire_generator
     async def temperature_desire_generator(beliefs: BeliefSet) -> List[Desire]:
         """Define desire generator for temperature control"""
         temp_belief = beliefs.get("room_temperature")
+        print(f"Temperature belief: {temp_belief}")
         if temp_belief:
-            temp = temp_belief.value
-            if temp < 20:
+            temp: Temperature = temp_belief.value
+            if temp.value < 20:
                 return [
                     Desire(
                         id="increase_temp",
@@ -37,7 +71,7 @@ async def main():
                         preconditions=["has_heating_control"],
                     )
                 ]
-            elif temp > 24:
+            elif temp.value > 24:
                 return [
                     Desire(
                         id="decrease_temp",
@@ -48,6 +82,7 @@ async def main():
                 ]
         return []
 
+    @agent.intention_selector
     async def temperature_intention_selector(
         desires: List[Desire], beliefs: BeliefSet
     ) -> List[Intention]:
@@ -55,42 +90,150 @@ async def main():
         intentions = []
         for desire in desires:
             if desire.id == "increase_temp":
+                current_temp: Temperature = beliefs.get("room_temperature").value
                 intentions.append(
                     Intention(
                         desire_id=desire.id,
                         steps=[
-                            "check_heating_system",
-                            "calculate_temp_increase",
-                            "adjust_heating",
+                            IntentionStep(
+                                description="Check heating system status",
+                                tool_name="check_heating_system",
+                                tool_params={},
+                            ),
+                            IntentionStep(
+                                description="Calculate required temperature adjustment",
+                                tool_name="calculate_temp_adjustment",
+                                tool_params={
+                                    "current_temp": current_temp.value,
+                                    "target_temp": 22.0,
+                                    "mode": "heating",
+                                },
+                            ),
+                            IntentionStep(
+                                description="Adjust heating system",
+                                tool_name="adjust_hvac",
+                                tool_params={"mode": "heating", "target_temp": 22.0},
+                            ),
                         ],
                     )
                 )
             elif desire.id == "decrease_temp":
+                current_temp: Temperature = beliefs.get("room_temperature").value
                 intentions.append(
                     Intention(
                         desire_id=desire.id,
                         steps=[
-                            "check_cooling_system",
-                            "calculate_temp_decrease",
-                            "adjust_cooling",
+                            IntentionStep(
+                                description="Check cooling system status",
+                                tool_name="check_cooling_system",
+                                tool_params={},
+                            ),
+                            IntentionStep(
+                                description="Calculate required temperature adjustment",
+                                tool_name="calculate_temp_adjustment",
+                                tool_params={
+                                    "current_temp": current_temp.value,
+                                    "target_temp": 22.0,
+                                    "mode": "cooling",
+                                },
+                            ),
+                            IntentionStep(
+                                description="Adjust cooling system",
+                                tool_name="adjust_hvac",
+                                tool_params={"mode": "cooling", "target_temp": 22.0},
+                            ),
                         ],
                     )
                 )
         return intentions
 
-    # Register the handlers
-    agent.register_perception_handler(temperature_handler)
-    agent.register_desire_generator(temperature_desire_generator)
-    agent.register_intention_selector(temperature_intention_selector)
+    @agent.bdi_tool(
+        name="fetch_temperature",
+        description="Fetch current temperature from sensors",
+        phases=["perception"],
+    )
+    async def fetch_temperature(ctx: RunContext[TemperatureDatabase]) -> Temperature:
+        """Fetch the current temperature from the temperature database."""
+        temp = ctx.deps.get_current_temperature()
+        print(f"Tool fetched temperature: {temp}")
+        return temp
 
-    # Simulate temperature readings and run BDI cycles
-    temperatures = [25.5, 19.5, 22.0]  # Sample temperature readings
+    @agent.bdi_tool(
+        name="check_heating_system",
+        description="Check if the heating system is operational",
+        phases=["desire", "intention"],
+    )
+    async def check_heating_system(
+        ctx: RunContext[TemperatureDatabase],
+    ) -> Dict[str, Any]:
+        """Check the status of the heating system."""
+        status = ctx.deps.check_heating_system()
+        print(f"Tool checked heating system: {status}")
+        return status
 
-    for temp in temperatures:
-        print(f"\nProcessing temperature: {temp}°C")
+    @agent.bdi_tool(
+        name="check_cooling_system",
+        description="Check if the cooling system is operational",
+        phases=["desire", "intention"],
+    )
+    async def check_cooling_system(
+        ctx: RunContext[TemperatureDatabase],
+    ) -> Dict[str, Any]:
+        """Check the status of the cooling system."""
+        status = ctx.deps.check_cooling_system()
+        print(f"Tool checked cooling system: {status}")
+        return status
 
-        # Run a BDI cycle with the new temperature reading
-        await agent.bdi_cycle({"temperature": temp})
+    @agent.bdi_tool(
+        name="calculate_temp_adjustment",
+        description="Calculate the required temperature adjustment",
+        phases=["intention"],
+    )
+    async def calculate_temp_adjustment(
+        ctx: RunContext[TemperatureDatabase],
+        current_temp: float,
+        target_temp: float,
+        mode: str,
+    ) -> Dict[str, Any]:
+        """Calculate the temperature adjustment needed."""
+        adjustment = abs(target_temp - current_temp)
+        print(f"Tool calculated {mode} adjustment: {adjustment}°C")
+        return {
+            "current_temp": current_temp,
+            "target_temp": target_temp,
+            "adjustment": adjustment,
+            "mode": mode,
+        }
+
+    @agent.bdi_tool(
+        name="adjust_hvac",
+        description="Adjust the HVAC system temperature",
+        phases=["intention"],
+    )
+    async def adjust_hvac(
+        ctx: RunContext[TemperatureDatabase], mode: str, target_temp: float
+    ) -> Dict[str, Any]:
+        """Adjust the HVAC system to the target temperature."""
+        result = ctx.deps.adjust_hvac(mode, target_temp)
+        print(f"Tool adjusted HVAC: mode={mode}, target={target_temp}°C")
+        return result
+
+    # Set up the agent
+    agent.deps = TemperatureDatabase()
+
+    # No need to register handlers explicitly, decorators take care of it
+
+    # Demonstrate direct use of temperature data
+    print("\n=== Demonstrating temperature-based perception ===")
+    temp_obj = agent.deps.get_current_temperature()
+    print(f"Fetched temperature: {temp_obj}")
+
+    # Update beliefs directly with the Temperature object
+    await temperature_handler(temp_obj, agent.beliefs)
+
+    # Run a complete BDI cycle
+    print("\n=== Running complete BDI cycle ===")
+    await agent.bdi_cycle()
 
 
 if __name__ == "__main__":
