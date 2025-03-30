@@ -22,6 +22,7 @@ async def main():
         @classmethod
         def get_current_temperature(cls) -> Temperature:
             value = random.randint(15, 30)
+            print(f"DEBUG: Generated random temperature: {value}")
             return Temperature(value)
 
         @classmethod
@@ -45,7 +46,7 @@ async def main():
     @agent.perception_handler
     async def temperature_handler(data: Temperature, beliefs: BeliefSet) -> None:
         """Define perception handler for temperature"""
-        print(f"Temperature data: {data}")
+        print(f"DEBUG: Data received in temperature_handler: {data}")
         beliefs.add(
             Belief(
                 name="room_temperature",
@@ -59,10 +60,9 @@ async def main():
     async def temperature_desire_generator(beliefs: BeliefSet) -> List[Desire]:
         """Define desire generator for temperature control"""
         temp_belief = beliefs.get("room_temperature")
-        print(f"Temperature belief: {temp_belief}")
         if temp_belief:
             temp: Temperature = temp_belief.value
-            if temp.value < 20:
+            if temp.value <= 21:
                 return [
                     Desire(
                         id="increase_temp",
@@ -71,7 +71,7 @@ async def main():
                         preconditions=["has_heating_control"],
                     )
                 ]
-            elif temp.value > 24:
+            elif temp.value >= 23:
                 return [
                     Desire(
                         id="decrease_temp",
@@ -151,43 +151,44 @@ async def main():
         name="fetch_temperature",
         description="Fetch current temperature from sensors",
         phases=["perception"],
+        result_type=Temperature,
     )
     async def fetch_temperature(ctx: RunContext[TemperatureDatabase]) -> Temperature:
         """Fetch the current temperature from the temperature database."""
         temp = ctx.deps.get_current_temperature()
-        print(f"Tool fetched temperature: {temp}")
         return temp
 
     @agent.bdi_tool(
         name="check_heating_system",
         description="Check if the heating system is operational",
         phases=["desire", "intention"],
+        result_type=dict,
     )
     async def check_heating_system(
         ctx: RunContext[TemperatureDatabase],
     ) -> Dict[str, Any]:
         """Check the status of the heating system."""
         status = ctx.deps.check_heating_system()
-        print(f"Tool checked heating system: {status}")
         return status
 
     @agent.bdi_tool(
         name="check_cooling_system",
         description="Check if the cooling system is operational",
         phases=["desire", "intention"],
+        result_type=dict,
     )
     async def check_cooling_system(
         ctx: RunContext[TemperatureDatabase],
     ) -> Dict[str, Any]:
         """Check the status of the cooling system."""
         status = ctx.deps.check_cooling_system()
-        print(f"Tool checked cooling system: {status}")
         return status
 
     @agent.bdi_tool(
         name="calculate_temp_adjustment",
         description="Calculate the required temperature adjustment",
         phases=["intention"],
+        result_type=dict,
     )
     async def calculate_temp_adjustment(
         ctx: RunContext[TemperatureDatabase],
@@ -197,7 +198,6 @@ async def main():
     ) -> Dict[str, Any]:
         """Calculate the temperature adjustment needed."""
         adjustment = abs(target_temp - current_temp)
-        print(f"Tool calculated {mode} adjustment: {adjustment}°C")
         return {
             "current_temp": current_temp,
             "target_temp": target_temp,
@@ -209,30 +209,17 @@ async def main():
         name="adjust_hvac",
         description="Adjust the HVAC system temperature",
         phases=["intention"],
+        result_type=dict,
     )
     async def adjust_hvac(
         ctx: RunContext[TemperatureDatabase], mode: str, target_temp: float
     ) -> Dict[str, Any]:
         """Adjust the HVAC system to the target temperature."""
         result = ctx.deps.adjust_hvac(mode, target_temp)
-        print(f"Tool adjusted HVAC: mode={mode}, target={target_temp}°C")
         return result
 
     # Set up the agent
     agent.deps = TemperatureDatabase()
-
-    # No need to register handlers explicitly, decorators take care of it
-
-    # Demonstrate direct use of temperature data
-    print("\n=== Demonstrating temperature-based perception ===")
-    temp_obj = agent.deps.get_current_temperature()
-    print(f"Fetched temperature: {temp_obj}")
-
-    # Update beliefs directly with the Temperature object
-    await temperature_handler(temp_obj, agent.beliefs)
-
-    # Run a complete BDI cycle
-    print("\n=== Running complete BDI cycle ===")
     await agent.bdi_cycle()
 
 

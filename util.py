@@ -8,3 +8,9 @@ class bcolors:
     ENDC = "\033[0m"
     BOLD = "\033[1m"
     UNDERLINE = "\033[4m"
+    # Custom colors
+    INTENTION = OKGREEN
+    DESIRE = OKCYAN
+    BELIEF = OKBLUE
+    PERCEPTION = WARNING
+    SYSTEM = HEADER

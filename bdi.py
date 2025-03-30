@@ -198,6 +198,7 @@ class ToolConfig(BaseModel):
     name: str
     description: str
     phases: List[Literal["perception", "desire", "intention", "general"]] = ["general"]
+    result_type: type[RunResultDataT] | None = None
 
 
 class BDI(Agent, Generic[T]):
@@ -290,6 +291,7 @@ class BDI(Agent, Generic[T]):
         phases: List[Literal["perception", "desire", "intention", "general"]] = [
             "general"
         ],
+        result_type: type[RunResultDataT] | None = None,
         **tool_kwargs,
     ):
         """Register a tool specifically for the BDI agent with phase information.
@@ -329,7 +331,10 @@ class BDI(Agent, Generic[T]):
 
             # Store BDI-specific configuration
             self.tool_configs[tool_name] = ToolConfig(
-                name=tool_name, description=tool_desc, phases=phases
+                name=tool_name,
+                description=tool_desc,
+                phases=phases,
+                result_type=result_type,
             )
 
             # Register with the standard Agent.tool decorator
@@ -361,6 +366,7 @@ class BDI(Agent, Generic[T]):
         phase: Literal["perception", "desire", "intention", "general"] = "general",
         deps: AgentDepsT = None,
         result_type: type[RunResultDataT] | None = None,
+        prompt_suffix: str | None = None,
     ) -> Any:
         """Directly call a tool by name with the specified parameters.
 
@@ -386,7 +392,17 @@ class BDI(Agent, Generic[T]):
             )
 
         # Create a custom prompt that will trigger the tool
-        tool_call_prompt = f"Call the {tool_name} tool with parameters: {tool_params}"
+        system_prompt = """IMPORTANT: When processing tool results, DO NOT modify any values or data structures unless explicitly instructed to do so.
+
+1. Preserve the exact numerical values (e.g., if a value is 29, keep it as 29)
+2. Do not round, normalize, or change values to preferred comfortable ranges
+3. Pass through all object properties exactly as received
+4. Treat all numeric values as precise measurements that must be preserved
+
+        Your role is to facilitate communication between system components, NOT to modify data.
+        The exact preservation of values is critical for the system's proper functioning.
+        """
+        tool_call_prompt = f"{system_prompt}\n\nCall the {tool_name} tool with parameters: {tool_params}. {prompt_suffix}"
 
         # Execute the tool call through the agent's run method
         # This preserves all the tool's error handling and validation
@@ -587,13 +603,13 @@ class BDI(Agent, Generic[T]):
             while intention.current_step < len(intention.steps):
                 current_step = intention.steps[intention.current_step]
                 print(
-                    f"{bcolors.OKCYAN}Executing structured step: {current_step.description}{bcolors.ENDC}"
+                    f"{bcolors.INTENTION}Executing structured step: {current_step.description}{bcolors.ENDC}"
                 )
 
                 # Execute the step as a tool call or prompt
                 if current_step.is_tool_call:
                     print(
-                        f"{bcolors.OKCYAN}Calling tool: {current_step.tool_name}{bcolors.ENDC}"
+                        f"{bcolors.SYSTEM}Calling tool: {current_step.tool_name}{bcolors.ENDC}"
                     )
                     await self.execute_action_with_tool(
                         current_step.tool_name,
@@ -619,11 +635,47 @@ class BDI(Agent, Generic[T]):
 
         self.log_states(["intentions"])
 
+    async def fetch_perceptions(self) -> None:
+        """Fetch perceptions from all tools registered for the perception phase.
+
+        This method automatically calls all tools registered for the perception phase
+        and combines their results into a perception object.
+
+        Returns:
+            A dictionary containing all perceptions gathered from perception tools.
+        """
+        perception_tools = self.get_phase_tools("perception")
+
+        print(
+            f"{bcolors.PERCEPTION}Running perception tools: {perception_tools}{bcolors.ENDC}"
+        )
+
+        for tool_name in perception_tools:
+            tool = self.tool_configs[tool_name]
+            try:
+                print(f"{bcolors.PERCEPTION}Running tool: {tool_name}{bcolors.ENDC}")
+                tool_result = await self.call_tool(
+                    tool_name=tool_name,
+                    tool_params={},
+                    phase="perception",
+                    deps=self.deps,
+                    result_type=tool.result_type,
+                    prompt_suffix=tool.description,
+                )
+
+                await self.update_beliefs(tool_result)
+
+            except Exception as e:
+                print(
+                    f"{bcolors.FAIL}Error running perception tool {tool_name}: {str(e)}{bcolors.ENDC}"
+                )
+
     async def bdi_cycle(self, initial_perception: Any = None) -> None:
         """Run one BDI reasoning cycle.
 
         Args:
-            perception: Optional new information to process
+            initial_perception: Optional new information to process. If provided, this will
+                               be used instead of automatically fetching perceptions from tools.
 
         Examples:
              # Complete BDI cycle for temperature control
@@ -653,8 +705,8 @@ class BDI(Agent, Generic[T]):
                  agent.register_desire_generator(temp_desire_gen)
                  agent.register_intention_selector(temp_intention_selector)
 
-                 # Run cycle with new temperature reading
-                 await agent.bdi_cycle({"temperature": 25})
+                 # Run cycle with automatic perception
+                 await agent.bdi_cycle()
 
                  # Verify cycle results
                  assert agent.beliefs.get("temperature").value == 25
@@ -665,11 +717,23 @@ class BDI(Agent, Generic[T]):
             types=["beliefs", "desires", "intentions"],
             message="States before starting BDI cycle",
         )
-        print(f"{bcolors.HEADER}\nBDI cycle starting...{bcolors.ENDC}")
+        print(f"{bcolors.SYSTEM}\nBDI cycle starting...{bcolors.ENDC}")
 
+        # Process perceptions
         if initial_perception:
+            # Use provided perception if available
+            print(
+                f"{bcolors.PERCEPTION}Using provided initial perception{bcolors.ENDC}"
+            )
             await self.update_beliefs(initial_perception)
+        else:
+            # Otherwise, automatically fetch perceptions from all perception tools
+            print(
+                f"{bcolors.PERCEPTION}Automatically fetching perceptions from tools{bcolors.ENDC}"
+            )
+            await self.fetch_perceptions()
 
+        # Continue with the rest of the BDI cycle
         await self.generate_desires()
         await self.form_intentions()
         await self.execute_intentions()
@@ -789,10 +853,12 @@ class BDI(Agent, Generic[T]):
         message: str | None = None,
     ):
         if message:
-            print(f"{bcolors.HEADER}{message}{bcolors.ENDC}")
+            print(f"{bcolors.SYSTEM}{message}{bcolors.ENDC}")
         if "beliefs" in types:
-            print(f"{bcolors.OKGREEN}Beliefs: {self.beliefs.beliefs}{bcolors.ENDC}")
+            print(f"{bcolors.BELIEF}Beliefs: {self.beliefs.beliefs}{bcolors.ENDC}")
         if "desires" in types:
-            print(f"{bcolors.OKCYAN}Desires: {self.desires}{bcolors.ENDC}")
+            print(f"{bcolors.DESIRE}Desires: {self.desires}{bcolors.ENDC}")
         if "intentions" in types:
-            print(f"{bcolors.WARNING}Intentions: {list(self.intentions)}{bcolors.ENDC}")
+            print(
+                f"{bcolors.INTENTION}Intentions: {list(self.intentions)}{bcolors.ENDC}"
+            )
