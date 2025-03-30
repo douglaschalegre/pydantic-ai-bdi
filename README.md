@@ -36,6 +36,15 @@ The BDI agent executes a continuous reasoning cycle:
 - **Phase-Specific Tools**: Tools can be registered for specific phases of the BDI cycle
 - **Automatic Perception**: BDI cycles automatically gather perceptions from all registered perception tools
 
+### Tools
+
+Tools are registered with the `@agent.bdi_tool` decorator. They can be registered for specific phases of the BDI cycle.
+
+- Perception phase: Tools that gather information from the environment to update beliefs
+- Desire phase: Tools that help evaluate conditions when generating desires
+- Intention phase: Tools that execute actions to fulfill intentions
+- General phase: Tools available in all phases (default if no phase is specified)
+
 ## Example Usage
 
 The framework allows for intuitive agent development:
