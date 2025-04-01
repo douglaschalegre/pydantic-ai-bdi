@@ -11,7 +11,7 @@ async def main():
     """Example of a smart home temperature control BDI agent."""
 
     # Create the agent
-    agent = BDI("openai:gpt-4")
+    agent = BDI("openai:gpt-4o")
 
     @dataclass
     class Temperature:
