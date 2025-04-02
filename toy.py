@@ -11,7 +11,15 @@ async def main():
     """Example of a smart home temperature control BDI agent."""
 
     # Create the agent
-    agent = BDI("openai:gpt-4o")
+    agent = BDI(
+        "openai:gpt-4o",
+        desires=["Keep the room at a comfortable temperature (20-24°C)"],
+        intentions=[
+            "Monitor temperature sensors",
+            "Control the heating system",
+            "Control the cooling system",
+        ],
+    )
 
     @dataclass
     class Temperature:
@@ -220,6 +228,8 @@ async def main():
 
     # Set up the agent
     agent.deps = TemperatureDatabase()
+
+    # Run the BDI cycle
     await agent.bdi_cycle()
 
 

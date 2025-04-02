@@ -9,196 +9,25 @@ from typing import (
     Awaitable,
     Literal,
 )
-from enum import Enum
-from pydantic import BaseModel, Field
 from collections import deque
 from pydantic_ai import Agent
 from pydantic_ai.tools import AgentDepsT
 from pydantic_ai.agent import RunResultDataT
 from util import bcolors
+from schemas import (
+    Belief,
+    BeliefSet,
+    Desire,
+    DesireStatus,
+    Intention,
+    ToolConfig,
+    IntentionStep,
+)
+import re
 
 T = TypeVar("T")
 
-
-class Belief(BaseModel):
-    """Representation of a single belief the agent holds about the world.
-
-    Examples:
-        # Create a belief about room temperature
-        temp_belief = Belief(
-        name="room_temperature",
-        value=22.5,
-        confidence=0.95,
-        source="temperature_sensor",
-        timestamp=datetime.now().timestamp()
-        )
-
-        # Create a belief about user presence
-        presence_belief = Belief(
-        name="user_present",
-        value=True,
-        confidence=1.0,
-        source="motion_sensor"
-        )
-    """
-
-    name: str
-    value: Any
-    confidence: float = Field(ge=0.0, le=1.0, default=1.0)
-    source: Optional[str] = None
-    timestamp: Optional[float] = None
-
-
-class BeliefSet(BaseModel):
-    """Container for the agent's beliefs about the world.
-
-    Examples:
-        # Create a belief set and add beliefs
-        belief_set = BeliefSet()
-        belief_set.add(Belief(name="temperature", value=22.5))
-        belief_set.add(Belief(name="humidity", value=45))
-
-        # Retrieve and update beliefs
-        temp = belief_set.get("temperature")
-        if temp and temp.value > 25:
-        print("Temperature is too high")
-
-        # Remove outdated beliefs
-        belief_set.remove("old_sensor_reading")
-    """
-
-    beliefs: Dict[str, Belief] = Field(default_factory=dict)
-
-    def add(self, belief: Belief) -> None:
-        """Add or update a belief in the belief set."""
-        self.beliefs[belief.name] = belief
-
-    def get(self, name: str) -> Optional[Belief]:
-        """Get a belief by name."""
-        return self.beliefs.get(name)
-
-    def remove(self, name: str) -> None:
-        """Remove a belief by name."""
-        if name in self.beliefs:
-            del self.beliefs[name]
-
-
-class DesireStatus(str, Enum):
-    PENDING = "pending"
-    ACTIVE = "active"
-    ACHIEVED = "achieved"
-    FAILED = "failed"
-    ABANDONED = "abandoned"
-
-
-class Desire(BaseModel):
-    """Representation of a goal the agent wants to achieve.
-
-    Examples:
-        # Create a desire to maintain optimal room temperature
-        temp_desire = Desire(
-        id="maintain_temp",
-        description="Keep room temperature between 20-24°C",
-        priority=0.8,
-        preconditions=["has_temperature_reading"],
-        success_conditions=["temperature_in_range"]
-        )
-
-        # Create a desire to save energy
-        energy_desire = Desire(
-        id="save_energy",
-        description="Minimize energy consumption",
-        priority=0.6,
-        status=DesireStatus.ACTIVE
-        )
-    """
-
-    id: str
-    description: str
-    priority: float = Field(ge=0.0, le=1.0, default=0.5)
-    status: DesireStatus = DesireStatus.PENDING
-    preconditions: List[str] = Field(default_factory=list)
-    success_conditions: List[str] = Field(default_factory=list)
-
-    def update_status(self, status: DesireStatus, log_states: Callable[[], None]):
-        self.status = status
-        log_states(["desires"])
-
-
-class IntentionStep(BaseModel):
-    """Representation of a single step in an intention's execution plan.
-
-    An intention step can be executed either as a direct LLM prompt or as a tool call.
-    """
-
-    description: str
-    tool_name: Optional[str] = None
-    tool_params: Dict[str, Any] = Field(default_factory=dict)
-
-    @property
-    def is_tool_call(self) -> bool:
-        """Check if this step should be executed as a tool call."""
-        return self.tool_name is not None
-
-
-class Intention(BaseModel):
-    """Representation of an action plan to achieve a desire.
-
-    Examples:
-        # Create an intention to adjust room temperature
-        adjust_temp = Intention(
-        desire_id="maintain_temp",
-        steps=[
-            "check_current_temperature",
-            "calculate_adjustment_needed",
-            "adjust_hvac_settings"
-        ]
-        )
-
-        # Create an intention to handle energy saving
-        save_energy = Intention(
-        desire_id="save_energy",
-        steps=[
-            "identify_unused_devices",
-            "turn_off_unnecessary_systems",
-            "optimize_hvac_schedule"
-        ]
-        )
-
-        # Create an intention with explicit tool calls
-        adjust_temp = Intention(
-            desire_id="maintain_temp",
-            structured_steps=[
-                IntentionStep(description="Check current temperature"),
-                IntentionStep(
-                    description="Adjust thermostat",
-                    tool_name="adjust_thermostat",
-                    tool_params={"temperature": 22.5}
-                )
-            ]
-        )
-    """
-
-    desire_id: str
-    steps: List[IntentionStep] = Field(default_factory=list)
-    current_step: int = 0
-    status: DesireStatus = DesireStatus.ACTIVE
-
-    def increment_current_step(self, log_states: Callable[[], None]):
-        self.current_step += 1
-        log_states(["intentions"])
-
-
-class ToolConfig(BaseModel):
-    """Configuration for a tool that can be used by the BDI agent.
-
-    This helps associate tools with specific BDI reasoning phases.
-    """
-
-    name: str
-    description: str
-    phases: List[Literal["perception", "desire", "intention", "general"]] = ["general"]
-    result_type: type[RunResultDataT] | None = None
+__all__ = ["BDI", "Belief", "BeliefSet", "Desire", "Intention", "IntentionStep"]
 
 
 class BDI(Agent, Generic[T]):
@@ -270,7 +99,9 @@ class BDI(Agent, Generic[T]):
      asyncio.run(main())
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(
+        self, *args, desires: List[str] = None, intentions: List[str] = None, **kwargs
+    ):
         super().__init__(*args, **kwargs)
         self.beliefs = BeliefSet()
         self.desires: List[Desire] = []
@@ -283,6 +114,194 @@ class BDI(Agent, Generic[T]):
             Callable[[List[Desire], BeliefSet], Awaitable[List[Intention]]]
         ] = []
         self.tool_configs: Dict[str, ToolConfig] = {}
+
+        # Initialize with string-based desires and intentions
+        if desires:
+            self._initialize_string_desires(desires)
+        if intentions:
+            self._initialize_string_intentions(intentions)
+
+    def _initialize_string_desires(self, desire_strings: List[str]) -> None:
+        """Initialize desires from string descriptions."""
+        for i, desire_string in enumerate(desire_strings):
+            # Create a simple desire ID based on a slug of the desire
+            desire_id = f"desire_{i + 1}"
+
+            # Create a basic desire with the string as description
+            desire = Desire(
+                id=desire_id,
+                description=desire_string,
+                priority=0.5,  # Default priority
+            )
+            self.desires.append(desire)
+        self.log_states(["desires"])
+
+    def _initialize_string_intentions(self, intention_strings: List[str]) -> None:
+        """Initialize intentions from string descriptions."""
+        for i, intention_string in enumerate(intention_strings):
+            # For each intention string, we need to create a structured intention
+            # that can be executed by the agent
+
+            # First, determine which desire this intention is associated with
+            # In this simple implementation, we'll just associate with the first desire
+            desire_id = self.desires[0].id if self.desires else f"auto_desire_{i + 1}"
+
+            # Create an intention with a prompt step that will rely on the LLM
+            # to interpret the intention string and take appropriate actions
+            intention = Intention(
+                desire_id=desire_id,
+                steps=[
+                    IntentionStep(
+                        description=f"Execute the intention: {intention_string}",
+                        # No explicit tool name - this will be sent to the LLM
+                    )
+                ],
+            )
+
+            self.intentions.append(intention)
+        self.log_states(["intentions"])
+
+    async def generate_intentions_from_desires(self) -> None:
+        """Convert string-based desires to more specific intentions using the LLM."""
+        if not self.desires or self.intentions:
+            # Skip if we have no desires or already have intentions
+            return
+
+        # Use the LLM to generate intentions based on desires and current beliefs
+        desires_text = "\n".join([f"- {d.description}" for d in self.desires])
+
+        # Get current beliefs as context
+        beliefs_text = "\n".join(
+            [
+                f"- {name}: {belief.value}"
+                for name, belief in self.beliefs.beliefs.items()
+            ]
+        )
+
+        # Get available tools
+        tools_text = "\n".join(
+            [
+                f"- {name}: {config.description}"
+                for name, config in self.tool_configs.items()
+            ]
+        )
+
+        # Prompt the LLM to generate intentions
+        prompt = f"""
+        Based on the following desires and current beliefs, generate specific intentions
+        that can help achieve these desires. Each intention should be executable using 
+        the available tools.
+        
+        Desires:
+        {desires_text}
+        
+        Current Beliefs:
+        {beliefs_text}
+        
+        Available Tools:
+        {tools_text}
+        
+        For each desire, provide one or more intentions in the following format:
+
+        Intention(
+            desire_id=<desire_id>,
+            structured_steps=[
+                IntentionStep(description=<step_description>),
+                IntentionStep(
+                    description=<step_description>,
+                    tool_name=<tool_name>,
+                    tool_params=<tool_params>
+                )
+            ]
+        )
+        ...
+        """
+
+        # Run the prompt through the LLM
+        result = await self.run(prompt, result_type=Intention)
+        intention_plan = result.content
+
+        # Parse the LLM's response to create intention objects
+        # This is a simple parser that could be improved
+        intention_sections = intention_plan.split("Intention:")
+
+        for section in intention_sections[1:]:  # Skip the first empty section
+            lines = section.strip().split("\n")
+            intention_description = lines[0].strip()
+            steps = []
+
+            # Find the Steps section
+            steps_start = -1
+            for i, line in enumerate(lines):
+                if line.strip().startswith("Steps:"):
+                    steps_start = i
+                    break
+
+            if steps_start >= 0:
+                # Parse steps
+                for step_line in lines[steps_start + 1 :]:
+                    step_line = step_line.strip()
+                    if not step_line or not any(c.isdigit() for c in step_line[:2]):
+                        continue
+
+                    # Remove the numbering
+                    step_text = (
+                        step_line[2:].strip()
+                        if step_line[1] == "."
+                        else step_line[1:].strip()
+                    )
+
+                    # Check if there's a tool call
+                    tool_name = None
+                    tool_params = {}
+
+                    if "[tool_name:" in step_text and "]" in step_text:
+                        tool_part = step_text[step_text.find("[tool_name:") :]
+                        step_desc = step_text[: step_text.find("[tool_name:")].strip()
+
+                        # Extract tool name
+                        tool_match = re.search(r"\[tool_name:\s*([^,\]]+)", tool_part)
+                        if tool_match:
+                            tool_name = tool_match.group(1).strip()
+
+                        # Extract parameters if any
+                        params_match = re.search(r"parameters:\s*([^\]]+)", tool_part)
+                        if params_match:
+                            params_text = params_match.group(1).strip()
+                            # Simple key-value parsing - could be improved
+                            param_pairs = params_text.split(",")
+                            for pair in param_pairs:
+                                if ":" in pair:
+                                    k, v = pair.split(":", 1)
+                                    tool_params[k.strip()] = v.strip()
+                    else:
+                        step_desc = step_text
+
+                    steps.append(
+                        IntentionStep(
+                            description=step_desc,
+                            tool_name=tool_name,
+                            tool_params=tool_params,
+                        )
+                    )
+
+            # Create the intention and add it to the queue
+            if steps:
+                # Associate with a relevant desire if possible
+                matched_desire = None
+                for desire in self.desires:
+                    # Simple text matching - could be improved
+                    if any(
+                        word in intention_description.lower()
+                        for word in desire.description.lower().split()
+                    ):
+                        matched_desire = desire
+                        break
+
+                desire_id = matched_desire.id if matched_desire else "auto_desire"
+                self.intentions.append(Intention(desire_id=desire_id, steps=steps))
+
+        self.log_states(["intentions"])
 
     def bdi_tool(
         self,
@@ -671,48 +690,7 @@ class BDI(Agent, Generic[T]):
                 )
 
     async def bdi_cycle(self, initial_perception: Any = None) -> None:
-        """Run one BDI reasoning cycle.
-
-        Args:
-            initial_perception: Optional new information to process. If provided, this will
-                               be used instead of automatically fetching perceptions from tools.
-
-        Examples:
-             # Complete BDI cycle for temperature control
-             async def example():
-                 agent = BDI("openai:gpt-4")
-
-                 # Register handlers
-                 async def temp_handler(data: dict, beliefs: BeliefSet):
-                     beliefs.add(Belief(name="temperature", value=data["temperature"]))
-
-                 async def temp_desire_gen(beliefs: BeliefSet) -> List[Desire]:
-                     temp = beliefs.get("temperature")
-                     if temp and temp.value > 24:
-                         return [Desire(id="cool_room", priority=0.8)]
-                     return []
-
-                 async def temp_intention_selector(
-                     desires: List[Desire],
-                     beliefs: BeliefSet
-                 ) -> List[Intention]:
-                     return [Intention(
-                         desire_id="cool_room",
-                         steps=["adjust_ac"]
-                     )]
-
-                 agent.register_perception_handler(temp_handler)
-                 agent.register_desire_generator(temp_desire_gen)
-                 agent.register_intention_selector(temp_intention_selector)
-
-                 # Run cycle with automatic perception
-                 await agent.bdi_cycle()
-
-                 # Verify cycle results
-                 assert agent.beliefs.get("temperature").value == 25
-                 assert len(agent.desires) == 1
-                 assert agent.desires[0].id == "cool_room"
-        """
+        """Run one BDI reasoning cycle."""
         self.log_states(
             types=["beliefs", "desires", "intentions"],
             message="States before starting BDI cycle",
@@ -733,9 +711,18 @@ class BDI(Agent, Generic[T]):
             )
             await self.fetch_perceptions()
 
-        # Continue with the rest of the BDI cycle
-        await self.generate_desires()
-        await self.form_intentions()
+        # If we have string-based desires but no detailed intentions,
+        # use the LLM to generate more specific intentions
+        if self.desires and not self.intentions:
+            await self.generate_intentions_from_desires()
+        else:
+            # Continue with the regular cycle
+            if not self.desires:
+                await self.generate_desires()
+            if not self.intentions:
+                await self.form_intentions()
+
+        # Execute intentions
         await self.execute_intentions()
 
     def perception_handler(self, func: Callable[[Any, BeliefSet], Awaitable[None]]):
