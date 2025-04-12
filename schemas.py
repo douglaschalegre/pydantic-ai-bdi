@@ -163,3 +163,34 @@ class ToolConfig(BaseModel):
     description: str
     phases: List[Literal["perception", "desire", "intention", "general"]] = ["general"]
     result_type: type[RunResultDataT] | None = None
+
+
+# --- Helper Models for Two-Stage Intention Generation ---
+class HighLevelIntention(BaseModel):
+    """Represents a high-level intention generated in Stage 1."""
+
+    desire_id: str = Field(
+        ..., description="The ID of the desire this intention addresses."
+    )
+    description: str = Field(
+        ...,
+        description="A concise description of the high-level goal for this intention.",
+    )
+
+
+class HighLevelIntentionList(BaseModel):
+    """A list of high-level intentions, expected output from Stage 1."""
+
+    intentions: List[HighLevelIntention]
+
+
+class DetailedStepList(BaseModel):
+    """A list of detailed intention steps, expected output from Stage 2."""
+
+    steps: List[IntentionStep] = Field(
+        ...,
+        description="A detailed, sequential list of steps (actions or tool calls) to execute the intention.",
+    )
+
+
+# --- End Helper Models ---
