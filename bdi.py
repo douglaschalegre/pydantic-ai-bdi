@@ -482,107 +482,6 @@ The exact preservation of values is critical for the system's proper functioning
             await handler(perception, self.beliefs)
         self.log_states(["beliefs"])
 
-    async def generate_desires(self) -> None:
-        """Generate new desires based on current beliefs.
-
-        Examples:
-             # Generate desires based on temperature
-             async def example():
-                 agent = BDI("openai:gpt-4")
-
-                 async def temp_desire_gen(beliefs: BeliefSet) -> List[Desire]:
-                     temp = beliefs.get("temperature")
-                     if temp and temp.value > 24:
-                         return [Desire(
-                             id="cool_room",
-                             description="Lower room temperature",
-                             priority=0.8
-                         )]
-                     return []
-
-                 agent.register_desire_generator(temp_desire_gen)
-                 agent.beliefs.add(Belief(
-                     name="temperature",
-                     value=25
-                 ))
-
-                 await agent.generate_desires()
-                 assert len(agent.desires) == 1
-                 assert agent.desires[0].id == "cool_room"
-        """
-        new_desires = []
-
-        # Generate desires using all registered generators
-        for generator in self.desire_generators:
-            desires = await generator(self.beliefs)
-            new_desires.extend(desires)
-
-        # Merge with existing desires, avoiding duplicates
-        existing_ids = {
-            d.id
-            for d in self.desires
-            if d.status in [DesireStatus.PENDING, DesireStatus.ACTIVE]
-        }
-
-        for desire in new_desires:
-            if desire.id not in existing_ids:
-                self.desires.append(desire)
-
-        self.log_states(["desires"])
-
-    async def form_intentions(self) -> None:
-        """Select and prioritize intentions from current desires.
-
-        Examples:
-             # Form intentions for temperature control
-             async def example():
-                 agent = BDI("openai:gpt-4")
-
-                 # Add a desire
-                 agent.desires.append(Desire(
-                     id="cool_room",
-                     description="Lower room temperature",
-                     priority=0.8
-                 ))
-
-                 async def temp_intention_selector(
-                     desires: List[Desire],
-                     beliefs: BeliefSet
-                 ) -> List[Intention]:
-                     return [Intention(
-                         desire_id="cool_room",
-                         steps=["check_ac", "adjust_temperature"]
-                     )]
-
-                 agent.register_intention_selector(temp_intention_selector)
-                 await agent.form_intentions()
-
-                 assert len(agent.intentions) == 1
-                 assert agent.intentions[0].steps == ["check_ac", "adjust_temperature"]
-        """
-        active_desires = [
-            d
-            for d in self.desires
-            if d.status in [DesireStatus.PENDING, DesireStatus.ACTIVE]
-        ]
-
-        all_intentions = []
-        for selector in self.intention_selectors:
-            intentions = await selector(active_desires, self.beliefs)
-            all_intentions.extend(intentions)
-
-        self.intentions.clear()
-        for intention in sorted(
-            all_intentions,
-            key=lambda i: next(
-                (d.priority for d in active_desires if d.id == i.desire_id), 0.0
-            ),
-            reverse=True,
-        ):
-            self.intentions.append(intention)
-
-        self.log_states(["intentions"])
-
     async def execute_intentions(self) -> None:
         """Execute the current intentions.
 
@@ -710,12 +609,6 @@ The exact preservation of values is critical for the system's proper functioning
         # use the LLM to generate more specific intentions
         if self.desires and not self.intentions:
             await self.generate_intentions_from_desires()
-        else:
-            # Continue with the regular cycle
-            if not self.desires:
-                await self.generate_desires()
-            if not self.intentions:
-                await self.form_intentions()
 
         # Execute intentions
         await self.execute_intentions()
