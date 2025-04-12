@@ -631,31 +631,6 @@ The exact preservation of values is critical for the system's proper functioning
         self.register_perception_handler(func)
         return func
 
-        """Decorator for registering an intention selector.
-
-        Intention selectors decide which desires to commit to and create action plans.
-
-        Example:
-            @agent.intention_selector
-            async def temperature_intention_selector(desires: List[Desire], beliefs: BeliefSet) -> List[Intention]:
-                intentions = []
-                for desire in desires:
-                    if desire.id == "increase_temp":
-                        intentions.append(Intention(
-                            desire_id=desire.id,
-                            steps=[
-                                IntentionStep(
-                                    description="Adjust temperature",
-                                    tool_name="adjust_hvac",
-                                    tool_params={"temperature": 22.0}
-                                )
-                            ]
-                        ))
-                return intentions
-        """
-        self.register_intention_selector(func)
-        return func
-
     def register_perception_handler(
         self, handler: Callable[[Any, BeliefSet], Awaitable[None]]
     ) -> None:
