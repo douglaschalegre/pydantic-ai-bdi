@@ -53,51 +53,6 @@ class BDI(Agent, Generic[T]):
     This implementation uses a modular approach where handlers, generators, and selectors
     can be registered to customize the agent's behavior at each stage of the BDI cycle.
     It also integrates with Pydantic AI's tool system to allow tool calls during reasoning.
-
-    Examples:
-     Here's a simple example of creating a smart home BDI agent:
-
-     # Create perception handler for temperature readings
-     async def temp_handler(perception: dict, beliefs: BeliefSet) -> None:
-         if "temperature" in perception:
-             self.beliefs.add(Belief(
-                 name="room_temperature",
-                 value=perception["temperature"],
-                 source="temp_sensor"
-             ))
-     # Create desire generator for temperature control
-     async def temp_desire_gen(beliefs: BeliefSet) -> List[Desire]:
-         temp = beliefs.get("room_temperature")
-         if temp and (temp.value < 20 or temp.value > 24):
-             return [Desire(
-                 id="adjust_temperature",
-                 description="Adjust temperature to optimal range",
-                 priority=0.8
-             )]
-         return []
-     # Create intention selector
-     async def temp_intention_selector(
-         desires: List[Desire],
-         beliefs: BeliefSet
-     ) -> List[Intention]:
-         intentions = []
-         for desire in desires:
-             if desire.id == "adjust_temperature":
-                 intentions.append(Intention(
-                     desire_id=desire.id,
-                     steps=["check_temp", "adjust_hvac"]
-                 ))
-         return intentions
-     # Create and set up the agent
-         agent = BDI("openai:gpt-4")
-         agent.register_perception_handler(temp_handler)
-         agent.register_desire_generator(temp_desire_gen)
-         agent.register_intention_selector(temp_intention_selector)
-     # Run the agent
-         async def main():
-             perception = {"temperature": 25.5}
-             await agent.bdi_cycle(perception)
-     asyncio.run(main())
     """
 
     def __init__(
@@ -317,24 +272,6 @@ class BDI(Agent, Generic[T]):
             description: The description of the tool
             phases: BDI reasoning phases where this tool should be available
             **tool_kwargs: Additional arguments to pass to the Agent.tool decorator
-
-        Examples:
-            # Register a tool for updating beliefs during perception
-            @agent.bdi_tool(phases=["perception"])
-            async def update_temperature(ctx: RunContext, temperature: float) -> None:
-                ctx.beliefs.add(Belief(name="temperature", value=temperature))
-
-            # Register a tool for checking conditions during desire generation
-            @agent.bdi_tool(phases=["desire"])
-            async def check_energy_usage(ctx: RunContext) -> float:
-                # Check current energy consumption
-                return 450.75
-
-            # Register a tool for executing actions during intention execution
-            @agent.bdi_tool(phases=["intention"])
-            async def adjust_thermostat(ctx: RunContext, temperature: float) -> bool:
-                # Connect to smart thermostat API and set temperature
-                return True
         """
 
         def decorator(func):
@@ -454,50 +391,13 @@ The exact preservation of values is critical for the system's proper functioning
 
         Args:
             perception: New information to incorporate into beliefs
-
-        Examples:
-             # Update beliefs with temperature reading
-             async def example():
-                 agent = BDI("openai:gpt-4")
-
-                 async def temp_handler(data: dict, beliefs: BeliefSet):
-                     beliefs.add(Belief(
-                         name="temperature",
-                         value=data["temperature"]
-                     ))
-
-                 agent.register_perception_handler(temp_handler)
-                 await agent.update_beliefs({"temperature": 23.5})
-
-                 temp_belief = agent.beliefs.get("temperature")
-                 assert temp_belief.value == 23.5
         """
         for handler in self.perception_handlers:
             await handler(perception, self.beliefs)
         self.log_states(["beliefs"])
 
     async def execute_intentions(self) -> None:
-        """Execute the current intentions.
-
-        Examples:
-             # Execute temperature adjustment intention
-             async def example():
-                 agent = BDI("openai:gpt-4")
-
-                 # Add an intention
-                 agent.intentions.append(Intention(
-                     desire_id="cool_room",
-                     steps=["check_ac", "adjust_temperature"]
-                 ))
-
-                 await agent.execute_intentions()
-
-                 # After execution, the intention should advance or complete
-                 assert (
-                     len(agent.intentions) == 0  # Completed
-                     or agent.intentions[0].current_step > 0  # Advanced
-                 )
-        """
+        """Execute the current intentions."""
         if not self.intentions:
             return
 
@@ -611,16 +511,6 @@ The exact preservation of values is critical for the system's proper functioning
         """Decorator for registering a perception handler.
 
         Perception handlers process incoming perceptions and update the agent's beliefs accordingly.
-
-        Example:
-            @agent.perception_handler
-            async def temperature_handler(data: Temperature, beliefs: BeliefSet) -> None:
-                beliefs.add(Belief(
-                    name="room_temperature",
-                    value=data,
-                    source="temperature_sensor",
-                    timestamp=datetime.now().timestamp(),
-                ))
         """
         self.register_perception_handler(func)
         return func
