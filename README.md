@@ -23,17 +23,21 @@ The BDI agent executes a continuous reasoning cycle:
 1. **Perception**: Update beliefs based on new information
    - Automatic perception from registered perception tools 
    - Manual perception from external sources (optional)
-2. **Deliberation**: Generate desires based on current beliefs
-3. **Means-End Reasoning**: Form intentions (concrete action plans) to achieve desires
-4. **Action**: Execute intentions
+2. **Deliberation**: Generate desires based on current beliefs (Currently implicit; could be formalized with desire generators)
+3. **Intention Generation (Two-Stage)**: Form intentions (concrete action plans) based on desires, beliefs, and optional user guidance.
+   - **Stage 1 (What)**: Generate high-level intentions based on desires, current beliefs, available tools, and any initial user guidance. Focuses on *what* needs to be done.
+   - **Stage 2 (How)**: For each high-level intention, generate a detailed, step-by-step action plan using current beliefs and available tools. Focuses on *how* to achieve the goal.
+4. **Action**: Execute the steps of the current intention.
 
 ## Features
 
 - **Type-Safe Agents**: Built on Pydantic for robust data validation and type safety
-- **Modular Components**: Customizable perception handlers, desire generators, and intention selectors
-- **Decorator-Based API**: Simple decorator-based API for registering components
+- **Modular Components**: Customizable perception handlers
+- **Decorator-Based API**: Simple decorator-based API for registering components like perception handlers and tools
+- **Two-Stage Intention Generation**: Separates the planning process into identifying *what* needs to be done (high-level intentions) and *how* to do it (detailed steps), using LLM calls for potentially deeper reasoning.
+- **Initial Intention Guidance**: Allows users to provide high-level strategic guidance during agent initialization, influencing the planning process without rigidly defining the final intentions.
 - **Tool Integration**: Seamless integration with Pydantic AI's tool system
-- **Phase-Specific Tools**: Tools can be registered for specific phases of the BDI cycle
+- **Phase-Specific Tools**: Tools can be registered for specific phases of the BDI cycle (perception, intention, etc.)
 - **Automatic Perception**: BDI cycles automatically gather perceptions from all registered perception tools
 
 ### Tools
@@ -44,59 +48,6 @@ Tools are registered with the `@agent.bdi_tool` decorator. They can be registere
 - Desire phase: Tools that help evaluate conditions when generating desires
 - Intention phase: Tools that execute actions to fulfill intentions
 - General phase: Tools available in all phases (default if no phase is specified)
-
-## Example Usage
-
-The framework allows for intuitive agent development:
-
-```python
-# Create a BDI agent
-agent = BDI("openai:gpt-4")
-
-# Register a perception handler to process tool data
-@agent.perception_handler
-async def temperature_handler(data, beliefs):
-    if "temperature" in data:
-        beliefs.add(Belief(name="room_temperature", value=data["temperature"]))
-
-# Register a perception tool
-@agent.bdi_tool(phases=["perception"])
-async def fetch_temperature(ctx):
-    temp = ctx.deps.get_current_temperature()
-    return {"temperature": temp}
-
-@agent.desire_generator
-async def temp_desire_generator(beliefs):
-    temp = beliefs.get("room_temperature").value
-    if temp < 20:
-        return [Desire(id="warm_up", priority=0.8)]
-    return []
-
-@agent.intention_selector
-async def temp_intention_selector(desires, beliefs):
-    for desire in desires:
-        if desire.id == "warm_up":
-            return [Intention(
-                desire_id=desire.id,
-                steps=[
-                    IntentionStep(
-                        description="Turn up heating",
-                        tool_name="adjust_temperature",
-                        tool_params={"target": 22.0}
-                    )
-                ]
-            )]
-    return []
-
-# Define action tools
-@agent.bdi_tool(phases=["intention"])
-async def adjust_temperature(ctx, target):
-    # Implement temperature adjustment logic
-    return {"success": True}
-
-# Run the BDI cycle with automatic perception
-await agent.bdi_cycle()
-```
 
 ## Applications
 
