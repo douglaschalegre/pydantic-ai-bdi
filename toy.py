@@ -1,6 +1,6 @@
-from bdi import BDI, Belief, BeliefSet, Desire, Intention, IntentionStep
+from bdi import BDI, Belief, BeliefSet
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import Dict, Any
 import asyncio
 from dataclasses import dataclass
 import random
@@ -13,7 +13,7 @@ async def main():
     # Create the agent
     agent = BDI(
         "openai:gpt-4o",
-        desires=["Keep the room at a comfortable temperature (20-24°C)"],
+        desires=["Keep the room at a comfortable temperature (30°C)"],
         intentions=[
             "Monitor temperature sensors",
             "Control the heating system",
@@ -63,97 +63,6 @@ async def main():
                 timestamp=datetime.now().timestamp(),
             )
         )
-
-    @agent.desire_generator
-    async def temperature_desire_generator(beliefs: BeliefSet) -> List[Desire]:
-        """Define desire generator for temperature control"""
-        temp_belief = beliefs.get("room_temperature")
-        if temp_belief:
-            temp: Temperature = temp_belief.value
-            if temp.value <= 21:
-                return [
-                    Desire(
-                        id="increase_temp",
-                        description="Increase room temperature to comfortable level",
-                        priority=0.8,
-                        preconditions=["has_heating_control"],
-                    )
-                ]
-            elif temp.value >= 23:
-                return [
-                    Desire(
-                        id="decrease_temp",
-                        description="Decrease room temperature to comfortable level",
-                        priority=0.8,
-                        preconditions=["has_cooling_control"],
-                    )
-                ]
-        return []
-
-    @agent.intention_selector
-    async def temperature_intention_selector(
-        desires: List[Desire], beliefs: BeliefSet
-    ) -> List[Intention]:
-        """Define intention selector for temperature adjustment"""
-        intentions = []
-        for desire in desires:
-            if desire.id == "increase_temp":
-                current_temp: Temperature = beliefs.get("room_temperature").value
-                intentions.append(
-                    Intention(
-                        desire_id=desire.id,
-                        steps=[
-                            IntentionStep(
-                                description="Check heating system status",
-                                tool_name="check_heating_system",
-                                tool_params={},
-                            ),
-                            IntentionStep(
-                                description="Calculate required temperature adjustment",
-                                tool_name="calculate_temp_adjustment",
-                                tool_params={
-                                    "current_temp": current_temp.value,
-                                    "target_temp": 22.0,
-                                    "mode": "heating",
-                                },
-                            ),
-                            IntentionStep(
-                                description="Adjust heating system",
-                                tool_name="adjust_hvac",
-                                tool_params={"mode": "heating", "target_temp": 22.0},
-                            ),
-                        ],
-                    )
-                )
-            elif desire.id == "decrease_temp":
-                current_temp: Temperature = beliefs.get("room_temperature").value
-                intentions.append(
-                    Intention(
-                        desire_id=desire.id,
-                        steps=[
-                            IntentionStep(
-                                description="Check cooling system status",
-                                tool_name="check_cooling_system",
-                                tool_params={},
-                            ),
-                            IntentionStep(
-                                description="Calculate required temperature adjustment",
-                                tool_name="calculate_temp_adjustment",
-                                tool_params={
-                                    "current_temp": current_temp.value,
-                                    "target_temp": 22.0,
-                                    "mode": "cooling",
-                                },
-                            ),
-                            IntentionStep(
-                                description="Adjust cooling system",
-                                tool_name="adjust_hvac",
-                                tool_params={"mode": "cooling", "target_temp": 22.0},
-                            ),
-                        ],
-                    )
-                )
-        return intentions
 
     @agent.bdi_tool(
         name="fetch_temperature",

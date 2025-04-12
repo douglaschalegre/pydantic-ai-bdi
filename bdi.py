@@ -411,15 +411,10 @@ class BDI(Agent, Generic[T]):
             )
 
         # Create a custom prompt that will trigger the tool
-        system_prompt = """IMPORTANT: When processing tool results, DO NOT modify any values or data structures unless explicitly instructed to do so.
+        system_prompt = """IMPORTANT: When processing tool results, DO NOT modify any values unless explicitly instructed to do so.
 
-1. Preserve the exact numerical values (e.g., if a value is 29, keep it as 29)
-2. Do not round, normalize, or change values to preferred comfortable ranges
-3. Pass through all object properties exactly as received
-4. Treat all numeric values as precise measurements that must be preserved
-
-        Your role is to facilitate communication between system components, NOT to modify data.
-        The exact preservation of values is critical for the system's proper functioning.
+Your role is to facilitate communication between system components, NOT to modify data.
+The exact preservation of values is critical for the system's proper functioning.
         """
         tool_call_prompt = f"{system_prompt}\n\nCall the {tool_name} tool with parameters: {tool_params}. {prompt_suffix}"
 
@@ -743,29 +738,6 @@ class BDI(Agent, Generic[T]):
         self.register_perception_handler(func)
         return func
 
-    def desire_generator(self, func: Callable[[BeliefSet], Awaitable[List[Desire]]]):
-        """Decorator for registering a desire generator.
-
-        Desire generators examine the agent's beliefs and create appropriate desires (goals).
-
-        Example:
-            @agent.desire_generator
-            async def temperature_desire_generator(beliefs: BeliefSet) -> List[Desire]:
-                temp_belief = beliefs.get("room_temperature")
-                if temp_belief and temp_belief.value.value < 20:
-                    return [Desire(
-                        id="increase_temp",
-                        description="Increase room temperature",
-                        priority=0.8
-                    )]
-                return []
-        """
-        self.register_desire_generator(func)
-        return func
-
-    def intention_selector(
-        self, func: Callable[[List[Desire], BeliefSet], Awaitable[List[Intention]]]
-    ):
         """Decorator for registering an intention selector.
 
         Intention selectors decide which desires to commit to and create action plans.
@@ -803,36 +775,6 @@ class BDI(Agent, Generic[T]):
                     It takes two arguments: the perception object and the current belief set.
         """
         self.perception_handlers.append(handler)
-
-    def register_desire_generator(
-        self, generator: Callable[[BeliefSet], Awaitable[List[Desire]]]
-    ) -> None:
-        """Register a generator for creating desires from beliefs.
-        Desire generators are functions that examine the agent's current beliefs
-        and create appropriate desires (goals). They implement the motivational aspect
-        of the agent by determining what the agent should want to achieve based on
-        its current understanding of the world.
-        Args:
-            generator: An async function that generates desires based on current beliefs.
-                      It takes the belief set as input and returns a list of new desires.
-        """
-        self.desire_generators.append(generator)
-
-    def register_intention_selector(
-        self, selector: Callable[[List[Desire], BeliefSet], Awaitable[List[Intention]]]
-    ) -> None:
-        """Register a selector for forming intentions from desires.
-        Intention selectors are functions that decide which desires the agent should
-        commit to pursuing. They implement the deliberative aspect of the agent by
-        choosing which goals to actively work toward and creating action plans (intentions)
-        to achieve those goals. Selectors consider factors like desire priority,
-        feasibility given current beliefs, and resource constraints.
-        Args:
-            selector: An async function that selects desires to become intentions.
-                     It takes the list of active desires and belief set as input
-                     and returns a list of intentions to be pursued.
-        """
-        self.intention_selectors.append(selector)
 
     def log_states(
         self,
