@@ -1,180 +1,142 @@
+from typing import (
+    Dict,
+    List,
+    Any,
+    Optional,
+    TypeVar,
+    Generic,
+    Callable,
+    Awaitable,
+    Literal,
+    Type,
+)
 from pydantic import BaseModel, Field
-from typing import Any, Optional, List, Dict, Callable, Literal
+from datetime import datetime
 from enum import Enum
 from pydantic_ai.agent import RunResultDataT
 
 
 class Belief(BaseModel):
-    """Representation of a single belief the agent holds about the world.
-
-    Examples:
-        # Create a belief about room temperature
-        temp_belief = Belief(
-        name="room_temperature",
-        value=22.5,
-        confidence=0.95,
-        source="temperature_sensor",
-        timestamp=datetime.now().timestamp()
-        )
-
-        # Create a belief about user presence
-        presence_belief = Belief(
-        name="user_present",
-        value=True,
-        confidence=1.0,
-        source="motion_sensor"
-        )
-    """
+    """Represents a piece of information the agent holds about the world."""
 
     name: str
     value: Any
-    confidence: float = Field(ge=0.0, le=1.0, default=1.0)
-    source: Optional[str] = None
-    timestamp: Optional[float] = None
+    source: str
+    timestamp: float
+    certainty: float = 1.0
 
 
-class BeliefSet(BaseModel):
-    """Container for the agent's beliefs about the world.
+class BeliefSet:
+    """Manages the agent's beliefs."""
 
-    Examples:
-        # Create a belief set and add beliefs
-        belief_set = BeliefSet()
-        belief_set.add(Belief(name="temperature", value=22.5))
-        belief_set.add(Belief(name="humidity", value=45))
+    def __init__(self):
+        self.beliefs: Dict[str, Belief] = {}
 
-        # Retrieve and update beliefs
-        temp = belief_set.get("temperature")
-        if temp and temp.value > 25:
-        print("Temperature is too high")
-
-        # Remove outdated beliefs
-        belief_set.remove("old_sensor_reading")
-    """
-
-    beliefs: Dict[str, Belief] = Field(default_factory=dict)
-
-    def add(self, belief: Belief) -> None:
-        """Add or update a belief in the belief set."""
+    def add(self, belief: Belief):
+        """Add or update a belief."""
         self.beliefs[belief.name] = belief
 
     def get(self, name: str) -> Optional[Belief]:
-        """Get a belief by name."""
+        """Retrieve a belief by name."""
         return self.beliefs.get(name)
 
-    def remove(self, name: str) -> None:
-        """Remove a belief by name."""
+    def update(self, name: str, value: Any, source: str, certainty: float = 1.0):
+        """Update an existing belief or add if new."""
+        if name in self.beliefs:
+            self.beliefs[name].value = value
+            self.beliefs[name].source = source
+            self.beliefs[name].timestamp = datetime.now().timestamp()
+            self.beliefs[name].certainty = certainty
+        else:
+            self.add(
+                Belief(
+                    name=name,
+                    value=value,
+                    source=source,
+                    timestamp=datetime.now().timestamp(),
+                    certainty=certainty,
+                )
+            )
+
+    def remove(self, name: str):
+        """Remove a belief."""
         if name in self.beliefs:
             del self.beliefs[name]
 
 
-class DesireStatus(str, Enum):
+class DesireStatus(Enum):
+    """Status of a desire."""
+
     PENDING = "pending"
     ACTIVE = "active"
     ACHIEVED = "achieved"
     FAILED = "failed"
-    ABANDONED = "abandoned"
 
 
 class Desire(BaseModel):
-    """Representation of a goal the agent wants to achieve.
-
-    Examples:
-        # Create a desire to maintain optimal room temperature
-        temp_desire = Desire(
-        id="maintain_temp",
-        description="Keep room temperature between 20-24°C",
-        priority=0.8,
-        preconditions=["has_temperature_reading"],
-        success_conditions=["temperature_in_range"]
-        )
-
-        # Create a desire to save energy
-        energy_desire = Desire(
-        id="save_energy",
-        description="Minimize energy consumption",
-        priority=0.6,
-        status=DesireStatus.ACTIVE
-        )
-    """
+    """Represents a high-level goal or objective for the agent."""
 
     id: str
     description: str
     priority: float = Field(ge=0.0, le=1.0, default=0.5)
     status: DesireStatus = DesireStatus.PENDING
-    preconditions: List[str] = Field(default_factory=list)
-    success_conditions: List[str] = Field(default_factory=list)
+    created_at: float = Field(default_factory=lambda: datetime.now().timestamp())
+    achieved_at: Optional[float] = None
 
-    def update_status(self, status: DesireStatus, log_states: Callable[[], None]):
-        self.status = status
-        log_states(["desires"])
+    def update_status(self, new_status: DesireStatus, logger: Callable):
+        self.status = new_status
+        if new_status == DesireStatus.ACHIEVED:
+            self.achieved_at = datetime.now().timestamp()
+        logger(
+            types=["desires"],
+            message=f"Desire '{self.id}' status updated to {new_status}",
+        )
 
 
 class IntentionStep(BaseModel):
-    """Representation of a single step in an intention's execution plan.
+    """A single step within an intention."""
 
-    An intention step can be executed either as a direct LLM prompt or as a tool call.
-    """
-
-    description: str
-    tool_name: Optional[str] = None
-    tool_params: Dict[str, Any] = Field(default_factory=dict)
-
-    @property
-    def is_tool_call(self) -> bool:
-        """Check if this step should be executed as a tool call."""
-        return self.tool_name is not None
+    description: str = Field(
+        description="Detailed description of the step (HOW to perform it). Can be natural language or a tool call hint."
+    )
+    is_tool_call: bool = Field(
+        default=False,
+        description="Set to true if this step involves calling a specific tool.",
+    )
+    tool_name: Optional[str] = Field(
+        default=None,
+        description="The name of the tool to call, if is_tool_call is true.",
+    )
+    tool_params: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Parameters for the tool call, if is_tool_call is true.",
+    )
 
 
 class Intention(BaseModel):
-    """Representation of an action plan to achieve a desire.
+    """Represents a committed plan of action (sequence of steps) to achieve a desire."""
 
-    Examples:
-        # Create an intention with explicit tool calls
-        adjust_temp = Intention(
-            desire_id="maintain_temp",
-            structured_steps=[
-                IntentionStep(description="Check current temperature"),
-                IntentionStep(
-                    description="Adjust thermostat",
-                    tool_name="adjust_thermostat",
-                    tool_params={"temperature": 22.5}
-                )
-            ]
-        )
-    """
-
-    desire_id: str
-    steps: List[IntentionStep] = Field(default_factory=list)
+    desire_id: str  # The desire this intention aims to fulfill
+    steps: List[IntentionStep]
     current_step: int = 0
-    status: DesireStatus = DesireStatus.ACTIVE
 
-    def increment_current_step(self, log_states: Callable[[], None]):
+    def increment_current_step(self, logger: Callable):
         self.current_step += 1
-        log_states(["intentions"])
+        logger(
+            types=["intentions"],
+            message=f"Intention for desire '{self.desire_id}' advanced to step {self.current_step}",
+        )
 
 
-class ToolConfig(BaseModel):
-    """Configuration for a tool that can be used by the BDI agent.
-
-    This helps associate tools with specific BDI reasoning phases.
-    """
-
-    name: str
-    description: str
-    phases: List[Literal["perception", "desire", "intention", "general"]] = ["general"]
-    result_type: type[RunResultDataT] | None = None
+# --- LLM Response Models for Intention Generation ---
 
 
-# --- Helper Models for Two-Stage Intention Generation ---
 class HighLevelIntention(BaseModel):
-    """Represents a high-level intention generated in Stage 1."""
-
     desire_id: str = Field(
-        ..., description="The ID of the desire this intention addresses."
+        description="The ID of the desire this intention relates to."
     )
     description: str = Field(
-        ...,
-        description="A concise description of the high-level goal for this intention.",
+        description="A concise, high-level description of the intention (WHAT to achieve)."
     )
 
 
@@ -185,12 +147,12 @@ class HighLevelIntentionList(BaseModel):
 
 
 class DetailedStepList(BaseModel):
-    """A list of detailed intention steps, expected output from Stage 2."""
+    """A list of detailed steps, expected output from Stage 2."""
 
-    steps: List[IntentionStep] = Field(
-        ...,
-        description="A detailed, sequential list of steps (actions or tool calls) to execute the intention.",
-    )
+    steps: List[IntentionStep]
 
 
-# --- End Helper Models ---
+# LLM Response Models for Reconsideration
+class ReconsiderResult(BaseModel):
+    valid: bool
+    reason: str | None = None
