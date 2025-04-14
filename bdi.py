@@ -44,7 +44,12 @@ class BDI(Agent, Generic[T]):
     """
 
     def __init__(
-        self, *args, desires: List[str] = None, intentions: List[str] = None, **kwargs
+        self,
+        *args,
+        desires: List[str] = None,
+        intentions: List[str] = None,
+        verbose: bool = False,
+        **kwargs,
     ):
         # Pass arguments to the base Pydantic AI Agent constructor
         # Ensure MCP configuration (e.g., server endpoints) is handled
@@ -55,7 +60,7 @@ class BDI(Agent, Generic[T]):
         self.desires: List[Desire] = []
         self.intentions: deque[Intention] = deque()
         self.initial_intention_guidance: List[str] = intentions or []
-        # Removed: perception_handlers, desire_generators, intention_selectors, tool_configs
+        self.verbose = verbose
 
         self._initialize_string_desires(desires)
 
@@ -84,9 +89,10 @@ class BDI(Agent, Generic[T]):
             )
             return
 
-        print(
-            f"{bcolors.SYSTEM}Starting two-stage intention generation...{bcolors.ENDC}"
-        )
+        if self.verbose:
+            print(
+                f"{bcolors.SYSTEM}Starting two-stage intention generation...{bcolors.ENDC}"
+            )
         final_intentions: List[Intention] = []
 
         # --- Context Gathering (Common for both stages) ---
@@ -113,9 +119,10 @@ class BDI(Agent, Generic[T]):
             )
             guidance_section = f"\n\nUser-Provided Strategic Guidance (Consider these as high-level intentions to guide planning):\n{guidance_text}"
 
-        print(
-            f"{bcolors.SYSTEM}Stage 1: Generating high-level intentions...{bcolors.ENDC}"
-        )
+        if self.verbose:
+            print(
+                f"{bcolors.SYSTEM}Stage 1: Generating high-level intentions...{bcolors.ENDC}"
+            )
         prompt_stage1 = f"""
         Given the following overall desires and current beliefs, identify high-level intentions required to fulfill these desires.
         For each relevant desire, propose one or more concise intentions. Each intention should represent a distinct goal or task achievable *by you, the AI agent*.
@@ -166,13 +173,15 @@ class BDI(Agent, Generic[T]):
             return
 
         # --- Stage 2: Generate Detailed Steps for Each High-Level Intention ---
-        print(
-            f"{bcolors.SYSTEM}Stage 2: Generating detailed steps for each intention...{bcolors.ENDC}"
-        )
-        for hl_intention in high_level_intentions:
+        if self.verbose:
             print(
-                f"{bcolors.INTENTION}  Processing high-level intention for Desire '{hl_intention.desire_id}': {hl_intention.description}{bcolors.ENDC}"
+                f"{bcolors.SYSTEM}Stage 2: Generating detailed steps for each intention...{bcolors.ENDC}"
             )
+        for hl_intention in high_level_intentions:
+            if self.verbose:
+                print(
+                    f"{bcolors.INTENTION}  Processing high-level intention for Desire '{hl_intention.desire_id}': {hl_intention.description}{bcolors.ENDC}"
+                )
 
             prompt_stage2 = f"""
             Your task is to create a detailed, step-by-step action plan to achieve the following high-level intention:
@@ -217,9 +226,10 @@ class BDI(Agent, Generic[T]):
                     continue
 
                 detailed_steps = stage2_result.data.steps
-                print(
-                    f"{bcolors.SYSTEM}    Generated {len(detailed_steps)} detailed steps.{bcolors.ENDC}"
-                )
+                if self.verbose:
+                    print(
+                        f"{bcolors.SYSTEM}    Generated {len(detailed_steps)} detailed steps.{bcolors.ENDC}"
+                    )
 
                 # Assemble the final intention
                 final_intention = Intention(
@@ -252,43 +262,24 @@ class BDI(Agent, Generic[T]):
         Returns:
             True if the step is considered successful, False otherwise.
         """
-        print(f"{bcolors.SYSTEM}  Analyzing step outcome...{bcolors.ENDC}")
+        if self.verbose:
+            print(f"{bcolors.SYSTEM}  Analyzing step outcome...{bcolors.ENDC}")
         if not result:
             print(
                 f"{bcolors.WARNING}  Analysis: Step failed - No result returned.{bcolors.ENDC}"
             )
-            # Potentially update belief: e.g., self.beliefs.add_belief(f"step_{step.description}_status", "no_result", "analysis", 0.8)
             return False
         if hasattr(result, "error_details") and result.error_details:
             print(
                 f"{bcolors.WARNING}  Analysis: Step failed - Execution error: {result.error_details}.{bcolors.ENDC}"
             )
-            # Potentially update belief about the error
             return False
 
         # --- Belief Update Placeholder ---
-        # This is where you'd parse result.data and update self.beliefs.
-        # This logic is highly dependent on the expected output of your steps/tools.
-        # Example:
-        # if step.description.startswith("check temperature"):
-        #     try:
-        #         temp_value = float(str(result.data).strip(" C"))
-        #         self.beliefs.add_belief("temperature", temp_value, "step_analysis", certainty=0.9)
-        #         print(f"{bcolors.BELIEF}  Belief updated: temperature = {temp_value}{bcolors.ENDC}")
-        #     except ValueError:
-        #         print(f"{bcolors.WARNING}  Could not parse temperature from result: {result.data}{bcolors.ENDC}")
-        # elif step.description.startswith("turn on heater"):
-        #     if "error" in str(result.data).lower() or "fail" in str(result.data).lower():
-        #          self.beliefs.add_belief("heater_status", "error", "step_analysis", certainty=0.8)
-        #          print(f"{bcolors.BELIEF}  Belief updated: heater_status = error{bcolors.ENDC}")
-        #     else:
-        #          self.beliefs.add_belief("heater_status", "on", "step_analysis", certainty=0.7) # Assume success if no error mentioned
-        #          print(f"{bcolors.BELIEF}  Belief updated: heater_status = on{bcolors.ENDC}")
-        # Add more sophisticated parsing and belief updates here based on your domain.
-        # For now, we just log that belief update logic would go here.
-        print(
-            f"{bcolors.SYSTEM}  (Placeholder for belief update based on result: {result.data}){bcolors.ENDC}"
-        )
+        if self.verbose:
+            print(
+                f"{bcolors.SYSTEM}  (Belief update check based on result: {result.data}){bcolors.ENDC}"
+            )
 
         # --- Success Assessment (using LLM) ---
         assessment_prompt = f"""
@@ -301,9 +292,10 @@ class BDI(Agent, Generic[T]):
         try:
             assessment_result = await self.run(assessment_prompt, result_type=bool)
             if assessment_result and assessment_result.data:
-                print(
-                    f"{bcolors.SYSTEM}  LLM Assessment: Step SUCCEEDED.{bcolors.ENDC}"
-                )
+                if self.verbose:
+                    print(
+                        f"{bcolors.SYSTEM}  LLM Assessment: Step SUCCEEDED.{bcolors.ENDC}"
+                    )
                 return True
             else:
                 failure_reason = (
@@ -314,14 +306,11 @@ class BDI(Agent, Generic[T]):
                 print(
                     f"{bcolors.WARNING}  LLM Assessment: Step FAILED. Reason: {failure_reason}{bcolors.ENDC}"
                 )
-                # Potentially update belief about the failure reason
-                # self.beliefs.add_belief(f"step_{step.description}_status", "failed_assessment", "analysis", 0.8, details=failure_reason)
                 return False
         except Exception as assess_e:
             print(
                 f"{bcolors.FAIL}  Error during LLM success assessment: {assess_e}{bcolors.ENDC}"
             )
-            # Treat assessment error as step failure
             return False
 
     async def _reconsider_current_intention(self) -> None:
@@ -331,7 +320,8 @@ class BDI(Agent, Generic[T]):
         marks the desire as PENDING for replanning.
         """
         if not self.intentions:
-            print(f"{bcolors.SYSTEM}No intentions to re-consider.{bcolors.ENDC}")
+            if self.verbose:
+                print(f"{bcolors.SYSTEM}No intentions to re-consider.{bcolors.ENDC}")
             return
 
         intention = self.intentions[0]
@@ -379,9 +369,10 @@ class BDI(Agent, Generic[T]):
         """
 
         try:
-            print(
-                f"{bcolors.SYSTEM}  Asking LLM to assess plan validity...{bcolors.ENDC}"
-            )
+            if self.verbose:
+                print(
+                    f"{bcolors.SYSTEM}  Asking LLM to assess plan validity...{bcolors.ENDC}"
+                )
             reconsider_result = await self.run(
                 reconsider_prompt, result_type=ReconsiderResult
             )
@@ -391,9 +382,10 @@ class BDI(Agent, Generic[T]):
                 and reconsider_result.data
                 and reconsider_result.data.valid
             ):
-                print(
-                    f"{bcolors.SYSTEM}  LLM Assessment: Plan remains VALID. Reason: {reconsider_result.data.reason}{bcolors.ENDC}"
-                )
+                if self.verbose:
+                    print(
+                        f"{bcolors.SYSTEM}  LLM Assessment: Plan remains VALID. Reason: {reconsider_result.data.reason}{bcolors.ENDC}"
+                    )
             else:
                 reason = (
                     reconsider_result.data.reason
@@ -428,10 +420,6 @@ class BDI(Agent, Generic[T]):
             print(
                 f"{bcolors.FAIL}  Error during intention reconsideration LLM call: {recon_e}{bcolors.ENDC}"
             )
-            # TODO: Decide how to handle failure during reconsideration.
-            # Maybe safer to leave the intention for now, or remove it?
-            # Let's log the error and continue, leaving the possibly flawed intention.
-            pass
 
     async def execute_intentions(self) -> None:
         """
@@ -471,21 +459,23 @@ class BDI(Agent, Generic[T]):
 
         try:
             if current_step.is_tool_call and current_step.tool_name:
-                print(
-                    f"{bcolors.SYSTEM}  Attempting tool call via self.run: {current_step.tool_name}({current_step.tool_params}){bcolors.ENDC}"
-                )
+                if self.verbose:
+                    print(
+                        f"{bcolors.SYSTEM}  Attempting tool call via self.run: {current_step.tool_name}({current_step.tool_params}){bcolors.ENDC}"
+                    )
                 tool_prompt = f"Execute the tool '{current_step.tool_name}' with the following parameters: {current_step.tool_params or {}}. Perform this action now."
                 step_result = await self.run(tool_prompt)
                 print(
-                    f"{bcolors.SYSTEM}  Tool '{current_step.tool_name}' execution attempted. Result data (if any): {step_result.data}{bcolors.ENDC}"
+                    f"{bcolors.SYSTEM}  Tool '{current_step.tool_name}' result: {step_result.data}{bcolors.ENDC}"
                 )
             else:
-                print(
-                    f"{bcolors.SYSTEM}  Executing descriptive step via self.run: {current_step.description}{bcolors.ENDC}"
-                )
+                if self.verbose:
+                    print(
+                        f"{bcolors.SYSTEM}  Executing descriptive step via self.run: {current_step.description}{bcolors.ENDC}"
+                    )
                 step_result = await self.run(current_step.description)
                 print(
-                    f"{bcolors.SYSTEM}  Descriptive step executed. Result data (if any): {step_result.data}{bcolors.ENDC}"
+                    f"{bcolors.SYSTEM}  Step result: {step_result.data}{bcolors.ENDC}"
                 )
 
             step_succeeded = await self._analyze_step_outcome_and_update_beliefs(
@@ -559,13 +549,15 @@ class BDI(Agent, Generic[T]):
         # Beliefs are updated within _analyze_step_outcome_and_update_beliefs
         # after an action is taken in execute_intentions.
         # We still print current beliefs at the start.
-        print(f"{bcolors.BELIEF}Current Beliefs:{bcolors.ENDC}")
-        self.log_states(["beliefs"])  # Use log_states for consistent formatting
+        if self.verbose:
+            print(f"{bcolors.BELIEF}Current Beliefs:{bcolors.ENDC}")
+            self.log_states(["beliefs"])  # Use log_states for consistent formatting
 
         # 2. Deliberation / Desire Status Check
         # Check for active/pending desires.
-        print(f"{bcolors.DESIRE}Current Desires:{bcolors.ENDC}")
-        self.log_states(["desires"])  # Use log_states for consistent formatting
+        if self.verbose:
+            print(f"{bcolors.DESIRE}Current Desires:{bcolors.ENDC}")
+            self.log_states(["desires"])  # Use log_states for consistent formatting
         active_desires = [
             d
             for d in self.desires
@@ -580,12 +572,17 @@ class BDI(Agent, Generic[T]):
             )
             await self.generate_intentions_from_desires()
         else:
-            print(f"{bcolors.INTENTION}Current Intentions:{bcolors.ENDC}")
-            self.log_states(["intentions"])  # Use log_states for consistent formatting
+            if self.verbose:
+                print(f"{bcolors.INTENTION}Current Intentions:{bcolors.ENDC}")
+                self.log_states(
+                    ["intentions"]
+                )  # Use log_states for consistent formatting
+            if not self.intentions:
+                print(
+                    f"{bcolors.SYSTEM}No intentions pending and no active desires require new ones.{bcolors.ENDC}"
+                )
 
         # 4. Intention Execution (One Step)
-        # Execute one step of the current highest-priority intention.
-        # This now includes outcome analysis and belief update.
         if self.intentions:
             await self.execute_intentions()
         else:
@@ -603,7 +600,7 @@ class BDI(Agent, Generic[T]):
                 print(
                     f"{bcolors.SYSTEM}  Skipping reconsideration: Current intention just completed or removed.{bcolors.ENDC}"
                 )
-                pass
+                pass  # Keep this pass
         else:
             print(
                 f"{bcolors.SYSTEM}  Skipping reconsideration: No intentions remaining.{bcolors.ENDC}"
@@ -623,28 +620,47 @@ class BDI(Agent, Generic[T]):
         if message:
             print(f"{bcolors.SYSTEM}{message}{bcolors.ENDC}")
         if "beliefs" in types:
-            belief_str = "\n".join(
-                [
-                    f"  - {name}: {b.value} (Source: {b.source}, Certainty: {b.certainty:.2f}, Time: {datetime.fromtimestamp(b.timestamp).isoformat()})"
-                    for name, b in self.beliefs.beliefs.items()
-                ]
-            )
-            print(f"{bcolors.BELIEF}Beliefs:\n{belief_str or '  (None)'}{bcolors.ENDC}")
+            if self.verbose:
+                belief_str = "\n".join(
+                    [
+                        f"  - {name}: {b.value} (Source: {b.source}, Certainty: {b.certainty:.2f}, Time: {datetime.fromtimestamp(b.timestamp).isoformat()})"
+                        for name, b in self.beliefs.beliefs.items()
+                    ]
+                )
+                print(
+                    f"{bcolors.BELIEF}Beliefs:\n{belief_str or '  (None)'}{bcolors.ENDC}"
+                )
+            else:
+                print(
+                    f"{bcolors.BELIEF}Beliefs: {len(self.beliefs.beliefs)} items{bcolors.ENDC}"
+                )
         if "desires" in types:
-            desire_str = "\n".join(
-                [
-                    f"  - {d.id}: {d.description} (Status: {d.status.value}, Priority: {d.priority})"
-                    for d in self.desires
-                ]
-            )
-            print(f"{bcolors.DESIRE}Desires:\n{desire_str or '  (None)'}{bcolors.ENDC}")
+            if self.verbose:
+                desire_str = "\n".join(
+                    [
+                        f"  - {d.id}: {d.description} (Status: {d.status.value}, Priority: {d.priority})"
+                        for d in self.desires
+                    ]
+                )
+                print(
+                    f"{bcolors.DESIRE}Desires:\n{desire_str or '  (None)'}{bcolors.ENDC}"
+                )
+            else:
+                print(
+                    f"{bcolors.DESIRE}Desires: {len(self.desires)} items{bcolors.ENDC}"
+                )
         if "intentions" in types:
-            intention_str = "\n".join(
-                [
-                    f"  - Desire '{i.desire_id}': Step {i.current_step + 1}/{len(i.steps)} -> {i.steps[i.current_step].description if i.current_step < len(i.steps) else '(Completed)'}"
-                    for i in self.intentions
-                ]
-            )
-            print(
-                f"{bcolors.INTENTION}Intentions:\n{intention_str or '  (None)'}{bcolors.ENDC}"
-            )
+            if self.verbose:
+                intention_str = "\n".join(
+                    [
+                        f"  - Desire '{i.desire_id}': Next -> {i.steps[i.current_step].description if i.current_step < len(i.steps) else '(Completed)'} (Step {i.current_step + 1}/{len(i.steps)})"
+                        for i in self.intentions
+                    ]
+                )
+                print(
+                    f"{bcolors.INTENTION}Intentions:\n{intention_str or '  (None)'}{bcolors.ENDC}"
+                )
+            else:
+                print(
+                    f"{bcolors.INTENTION}Intentions: {len(self.intentions)} items{bcolors.ENDC}"
+                )
