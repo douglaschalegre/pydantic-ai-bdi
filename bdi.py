@@ -474,9 +474,10 @@ class BDI(Agent, Generic[T]):
                         f"{bcolors.SYSTEM}  Executing descriptive step via self.run: {current_step.description}{bcolors.ENDC}"
                     )
                 step_result = await self.run(current_step.description)
-                print(
-                    f"{bcolors.SYSTEM}  Step result: {step_result.data}{bcolors.ENDC}"
-                )
+                if self.verbose:
+                    print(
+                        f"{bcolors.SYSTEM}  Step result: {step_result.data}{bcolors.ENDC}"
+                    )
 
             step_succeeded = await self._analyze_step_outcome_and_update_beliefs(
                 current_step, step_result
