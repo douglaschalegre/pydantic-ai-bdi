@@ -2,7 +2,6 @@ from bdi import BDI
 import asyncio
 
 
-# --- Agent Definition ---
 async def main():
     """Example BDI agent using an external MCP server for tools."""
 
