@@ -15,6 +15,8 @@ async def main():
             "Prioritize energy-efficient adjustments when activating HVAC.",
             "Regularly check HVAC system health to ensure reliable operation.",
         ],
+        verbose=True,
+        enable_human_in_the_loop=True,
     )
 
     for i in range(5):
