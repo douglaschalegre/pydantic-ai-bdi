@@ -5,15 +5,10 @@ from typing import (
     Optional,
     TypeVar,
     Generic,
-    Callable,
-    Awaitable,
     Literal,
-    Type,
-    get_type_hints,
 )
 from collections import deque
 from pydantic_ai import Agent
-from pydantic_ai.tools import AgentDepsT
 from pydantic_ai.agent import RunResultDataT
 from util import bcolors
 from schemas import (
