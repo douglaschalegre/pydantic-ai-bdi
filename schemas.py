@@ -3,17 +3,12 @@ from typing import (
     List,
     Any,
     Optional,
-    TypeVar,
-    Generic,
     Callable,
-    Awaitable,
     Literal,
-    Type,
 )
 from pydantic import BaseModel, Field
 from datetime import datetime
 from enum import Enum
-from pydantic_ai.agent import RunResultDataT
 
 
 class Belief(BaseModel):

@@ -9,7 +9,7 @@ from typing import (
 )
 from collections import deque
 from pydantic_ai import Agent
-from pydantic_ai.agent import RunResultDataT
+from pydantic_ai.agent import AgentRunResult
 from util import bcolors
 from schemas import (
     Belief,
@@ -144,23 +144,18 @@ class BDI(Agent, Generic[T]):
         try:
             # Use the base agent's run method
             stage1_result = await self.run(
-                prompt_stage1, result_type=HighLevelIntentionList
+                prompt_stage1, output_type=HighLevelIntentionList
             )
             if (
                 not stage1_result
-                or not stage1_result.data
-                or not stage1_result.data.intentions
+                or not stage1_result.output
+                or not stage1_result.output.intentions
             ):
                 print(
                     f"{bcolors.FAIL}Stage 1 failed: No high-level intentions generated.{bcolors.ENDC}"
                 )
-                # Log error details if available
-                if stage1_result and hasattr(stage1_result, "error_details"):
-                    print(
-                        f"{bcolors.FAIL}Error details: {stage1_result.error_details}{bcolors.ENDC}"
-                    )
                 return
-            high_level_intentions = stage1_result.data.intentions
+            high_level_intentions = stage1_result.output.intentions
             print(
                 f"{bcolors.SYSTEM}Stage 1 successful: Generated {len(high_level_intentions)} high-level intentions.{bcolors.ENDC}"
             )
@@ -207,24 +202,19 @@ class BDI(Agent, Generic[T]):
             try:
                 # Use the base agent's run method
                 stage2_result = await self.run(
-                    prompt_stage2, result_type=DetailedStepList
+                    prompt_stage2, output_type=DetailedStepList
                 )
                 if (
                     not stage2_result
-                    or not stage2_result.data
-                    or not stage2_result.data.steps
+                    or not stage2_result.output
+                    or not stage2_result.output.steps
                 ):
                     print(
                         f"{bcolors.WARNING}  Stage 2 warning: No detailed steps generated for intention '{hl_intention.description}'. Skipping.{bcolors.ENDC}"
                     )
-                    # Log error details if available
-                    if stage2_result and hasattr(stage2_result, "error_details"):
-                        print(
-                            f"{bcolors.WARNING}Error details: {stage2_result.error_details}{bcolors.ENDC}"
-                        )
                     continue
 
-                detailed_steps = stage2_result.data.steps
+                detailed_steps = stage2_result.output.steps
                 if self.verbose:
                     print(
                         f"{bcolors.SYSTEM}    Generated {len(detailed_steps)} detailed steps.{bcolors.ENDC}"
@@ -249,7 +239,7 @@ class BDI(Agent, Generic[T]):
         self.log_states(["intentions"])
 
     async def _analyze_step_outcome_and_update_beliefs(
-        self, step: IntentionStep, result: Optional[RunResultDataT]
+        self, step: IntentionStep, result: Optional[AgentRunResult]
     ) -> bool:
         """
         Analyzes the outcome of an executed step, updates beliefs, and determines success.
@@ -268,29 +258,27 @@ class BDI(Agent, Generic[T]):
                 f"{bcolors.WARNING}  Analysis: Step failed - No result returned.{bcolors.ENDC}"
             )
             return False
-        if hasattr(result, "error_details") and result.error_details:
-            print(
-                f"{bcolors.WARNING}  Analysis: Step failed - Execution error: {result.error_details}.{bcolors.ENDC}"
-            )
-            return False
+
+        # Note: AgentRunResult doesn't have error_details attribute directly
+        # Error handling is now managed differently in the new version
 
         # --- Belief Update Placeholder ---
         if self.verbose:
             print(
-                f"{bcolors.SYSTEM}  (Belief update check based on result: {result.data}){bcolors.ENDC}"
+                f"{bcolors.SYSTEM}  (Belief update check based on result: {result.output}){bcolors.ENDC}"
             )
 
         # --- Success Assessment (using LLM) ---
         assessment_prompt = f"""
         Original objective for the step: "{step.description}"
-        Result obtained: "{result.data}"
+        Result obtained: "{result.output}"
 
         Based *only* on the result obtained, did the step successfully achieve its original objective?
         Respond with a boolean value: True for success, False for failure.
         """
         try:
-            assessment_result = await self.run(assessment_prompt, result_type=bool)
-            if assessment_result and assessment_result.data:
+            assessment_result = await self.run(assessment_prompt, output_type=bool)
+            if assessment_result and assessment_result.output:
                 if self.verbose:
                     print(
                         f"{bcolors.SYSTEM}  LLM Assessment: Step SUCCEEDED.{bcolors.ENDC}"
@@ -298,8 +286,8 @@ class BDI(Agent, Generic[T]):
                 return True
             else:
                 failure_reason = (
-                    assessment_result.data
-                    if (assessment_result and assessment_result.data)
+                    assessment_result.output
+                    if (assessment_result and assessment_result.output)
                     else "No assessment result or negative assessment"
                 )
                 print(
@@ -373,25 +361,25 @@ class BDI(Agent, Generic[T]):
                     f"{bcolors.SYSTEM}  Asking LLM to assess plan validity...{bcolors.ENDC}"
                 )
             reconsider_result = await self.run(
-                reconsider_prompt, result_type=ReconsiderResult
+                reconsider_prompt, output_type=ReconsiderResult
             )
 
             if (
                 reconsider_result
-                and reconsider_result.data
-                and reconsider_result.data.valid
+                and reconsider_result.output
+                and reconsider_result.output.valid
             ):
                 if self.verbose:
                     print(
-                        f"{bcolors.SYSTEM}  LLM Assessment: Plan remains VALID. Reason: {reconsider_result.data.reason}{bcolors.ENDC}"
+                        f"{bcolors.SYSTEM}  LLM Assessment: Plan remains VALID. Reason: {reconsider_result.output.reason}{bcolors.ENDC}"
                     )
             else:
                 reason = (
-                    reconsider_result.data.reason
+                    reconsider_result.output.reason
                     if (
                         reconsider_result
-                        and reconsider_result.data
-                        and reconsider_result.data.reason
+                        and reconsider_result.output
+                        and reconsider_result.output.reason
                     )
                     else "LLM assessment indicated invalidity or failed."
                 )
@@ -453,7 +441,7 @@ class BDI(Agent, Generic[T]):
             f"{bcolors.INTENTION}Executing step {intention.current_step + 1}/{len(intention.steps)} for desire '{intention.desire_id}': {current_step.description}{bcolors.ENDC}"
         )
 
-        step_result: Optional[RunResultDataT] = None
+        step_result: Optional[AgentRunResult] = None
         step_succeeded: bool = False
 
         try:
@@ -465,7 +453,7 @@ class BDI(Agent, Generic[T]):
                 tool_prompt = f"Execute the tool '{current_step.tool_name}' with the following parameters: {current_step.tool_params or {}}. Perform this action now."
                 step_result = await self.run(tool_prompt)
                 print(
-                    f"{bcolors.SYSTEM}  Tool '{current_step.tool_name}' result: {step_result.data}{bcolors.ENDC}"
+                    f"{bcolors.SYSTEM}  Tool '{current_step.tool_name}' result: {step_result.output}{bcolors.ENDC}"
                 )
             else:
                 if self.verbose:
@@ -475,7 +463,7 @@ class BDI(Agent, Generic[T]):
                 step_result = await self.run(current_step.description)
                 if self.verbose:
                     print(
-                        f"{bcolors.SYSTEM}  Step result: {step_result.data}{bcolors.ENDC}"
+                        f"{bcolors.SYSTEM}  Step result: {step_result.output}{bcolors.ENDC}"
                     )
 
             step_succeeded = await self._analyze_step_outcome_and_update_beliefs(
@@ -692,7 +680,7 @@ class BDI(Agent, Generic[T]):
         self,
         intention: Intention,
         failed_step: IntentionStep,
-        step_result: Optional[RunResultDataT],
+        step_result: Optional[AgentRunResult],
     ) -> Dict[str, Any]:
         """Gathers all relevant information about a step failure into a structured dictionary."""
         context = {
@@ -705,14 +693,9 @@ class BDI(Agent, Generic[T]):
             "tool_params": failed_step.tool_params
             if failed_step.is_tool_call
             else None,
-            "step_result_data": step_result.data
-            if step_result and hasattr(step_result, "data")
+            "step_result_output": step_result.output
+            if step_result and hasattr(step_result, "output")
             else "No result data",
-            "step_result_error": step_result.error_details
-            if step_result
-            and hasattr(step_result, "error_details")
-            and step_result.error_details
-            else None,
             "llm_step_assessment": "Step was deemed a FAILURE by internal analysis.",  # Placeholder, can be enhanced
             "current_beliefs": {
                 name: {
@@ -757,11 +740,7 @@ class BDI(Agent, Generic[T]):
                 f"  Tool Call: {failure_context['tool_name']}({json.dumps(failure_context['tool_params']) if failure_context['tool_params'] else '{}'})"
             )
 
-        print(f"Step Result Data: {failure_context['step_result_data']}")
-        if failure_context["step_result_error"]:
-            print(
-                f"Step Result Error: {bcolors.WARNING}{failure_context['step_result_error']}{bcolors.ENDC}"
-            )
+        print(f"Step Result Data: {failure_context['step_result_output']}")
 
         print(f"Agent Assessment: {failure_context['llm_step_assessment']}")
 
@@ -845,8 +824,7 @@ class BDI(Agent, Generic[T]):
         - Is Tool Call: {failure_context["is_tool_call"]}
         - Tool Name: {failure_context["tool_name"] if failure_context["is_tool_call"] else "N/A"}
         - Tool Params Used: {json.dumps(failure_context["tool_params"]) if failure_context["is_tool_call"] and failure_context["tool_params"] else "N/A"}
-        - Step Result Data: {json.dumps(failure_context["step_result_data"])}
-        - Step Result Error: {json.dumps(failure_context["step_result_error"])}
+        - Step Result Data: {json.dumps(failure_context["step_result_output"])}
         - Current Beliefs: {json.dumps(failure_context["current_beliefs"])}
         - Remaining Plan Steps (after failed one): {json.dumps(failure_context["remaining_plan_steps"])}
 
@@ -873,24 +851,18 @@ class BDI(Agent, Generic[T]):
                     f"{bcolors.SYSTEM}  Sending user guidance to LLM for interpretation...{bcolors.ENDC}"
                 )
 
-            llm_response = await self.run(prompt, result_type=PlanManipulationDirective)
+            llm_response = await self.run(prompt, output_type=PlanManipulationDirective)
 
-            if llm_response and llm_response.data:
+            if llm_response and llm_response.output:
                 if self.verbose:
                     print(
-                        f"{bcolors.SYSTEM}  LLM interpretation successful. Directive: {llm_response.data.model_dump_json(indent=2)}{bcolors.ENDC}"
+                        f"{bcolors.SYSTEM}  LLM interpretation successful. Directive: {llm_response.output.model_dump_json(indent=2)}{bcolors.ENDC}"
                     )
-                return llm_response.data
+                return llm_response.output
             else:
                 error_msg = (
                     "LLM did not return valid data for PlanManipulationDirective."
                 )
-                if (
-                    llm_response
-                    and hasattr(llm_response, "error_details")
-                    and llm_response.error_details
-                ):
-                    error_msg += f" Error details: {llm_response.error_details}"
                 print(f"{bcolors.FAIL}  {error_msg}{bcolors.ENDC}")
                 return None
         except Exception as e:
@@ -1193,7 +1165,7 @@ class BDI(Agent, Generic[T]):
         self,
         intention: Intention,
         failed_step: IntentionStep,
-        step_result: Optional[RunResultDataT],
+        step_result: Optional[AgentRunResult],
     ) -> bool:
         """
         Orchestrates the full human-in-the-loop interaction when a step fails.
