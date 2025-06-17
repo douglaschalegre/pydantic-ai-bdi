@@ -256,12 +256,20 @@ class BDI(Agent, Generic[T]):
                 f"{bcolors.SYSTEM}  (Belief update check based on result: {result.output}){bcolors.ENDC}"
             )
 
+        # Get history context
+        intention = self.intentions[0]
+        history_context = self._generate_history_context(intention)
+
         # --- Success Assessment (using LLM) ---
         assessment_prompt = f"""
         Original objective for the step: "{step.description}"
         Result obtained: "{result.output}"
 
-        Based *only* on the result obtained, did the step successfully achieve its original objective?
+        Recent step history:
+        {history_context}
+
+        Based on the result obtained and recent history, did the step successfully achieve its original objective?
+        Consider the context of previous steps and their outcomes in your assessment.
         Respond with a boolean value: True for success, False for failure.
         """
         try:
@@ -324,17 +332,28 @@ class BDI(Agent, Generic[T]):
             [f"  - {s.description}" for s in remaining_steps_list]
         )
 
+        # Get detailed history context for reconsideration
+        history_context = self._generate_history_context(
+            intention,
+            max_history=5,  # Show more history for reconsideration
+            include_details=True,  # Include detailed information
+        )
+
         reconsider_prompt = f"""
         Current Agent Beliefs:
         {beliefs_text}
+
+        Step History:
+        {history_context}
 
         Remaining Plan Steps (for Desire ID '{intention.desire_id}'):
         {remaining_steps_text}
 
         Critically evaluate:
-        1. Is this remaining plan still likely to succeed in achieving the original desire '{intention.desire_id}', considering the current beliefs?
-        2. Are there any direct contradictions between the beliefs and the plan's assumptions or required actions (e.g., trying to use a device believed to be broken)?
-        3. Is there a high probability of failure for upcoming steps based on the current beliefs?
+        1. Is this remaining plan still likely to succeed in achieving the original desire '{intention.desire_id}', considering the current beliefs and step history?
+        2. Are there any patterns in the step history that suggest the plan needs adjustment?
+        3. Are there any direct contradictions between the beliefs, history, and the plan's assumptions?
+        4. Based on the history of successful and failed steps, should the remaining plan be modified?
 
         Respond with only with True if the plan seems sound to continue.
         Respond with False followed by a brief explanation if the plan is flawed, unlikely to succeed, or contradicted by beliefs.
@@ -450,6 +469,17 @@ class BDI(Agent, Generic[T]):
                 current_step, step_result
             )
 
+            beliefs_updated = {
+                name: {"value": b.value, "source": b.source, "certainty": b.certainty}
+                for name, b in self.beliefs.beliefs.items()
+            }
+            intention.add_to_history(
+                step=current_step,
+                result=step_result.output if step_result else "No result",
+                success=step_succeeded,
+                beliefs_updated=beliefs_updated,
+            )
+
             if step_succeeded:
                 print(
                     f"{bcolors.INTENTION}  Step {intention.current_step + 1} successful.{bcolors.ENDC}"
@@ -503,6 +533,17 @@ class BDI(Agent, Generic[T]):
             print(f"{bcolors.FAIL}Error Message: {e}{bcolors.ENDC}")
             print(
                 f"{bcolors.FAIL}------------------------------------------------------------{bcolors.ENDC}"
+            )
+
+            beliefs_updated = {
+                name: {"value": b.value, "source": b.source, "certainty": b.certainty}
+                for name, b in self.beliefs.beliefs.items()
+            }
+            intention.add_to_history(
+                step=current_step,
+                result=f"Exception: {str(e)}",
+                success=False,
+                beliefs_updated=beliefs_updated,
             )
 
             for desire in self.desires:
@@ -1205,3 +1246,44 @@ class BDI(Agent, Generic[T]):
                 f"{bcolors.WARNING}Failed to apply user guidance completely.{bcolors.ENDC}"
             )
             return False
+
+    def _generate_history_context(
+        self, intention: Intention, max_history: int = 3, include_details: bool = False
+    ) -> str:
+        """
+        Generates a formatted context string from the intention's step history.
+
+        Args:
+            intention: The Intention object containing the step history
+            max_history: Maximum number of recent steps to include (default: 3)
+            include_details: Whether to include detailed information about each step (default: False)
+
+        Returns:
+            A formatted string containing the step history context
+        """
+        if not intention.step_history:
+            return "No previous steps executed."
+
+        recent_history = intention.step_history[-max_history:]
+
+        history_lines = []
+        for h in recent_history:
+            step_info = f"Step {h.step_number}: {h.step_description} - {'Success' if h.success else 'Failed'}"
+
+            if include_details:
+                details = [
+                    f"  Result: {h.result}",
+                    f"  Timestamp: {datetime.fromtimestamp(h.timestamp).isoformat()}",
+                    "  Beliefs Updated:",
+                ]
+
+                for belief_name, belief_data in h.beliefs_updated.items():
+                    details.append(
+                        f"    - {belief_name}: {belief_data['value']} (Certainty: {belief_data['certainty']:.2f})"
+                    )
+
+                step_info += "\n" + "\n".join(details)
+
+            history_lines.append(step_info)
+
+        return "\n".join(history_lines)
