@@ -49,10 +49,6 @@ class BDI(Agent, Generic[T]):
         enable_human_in_the_loop: bool = False,
         **kwargs,
     ):
-        # Pass arguments to the base Pydantic AI Agent constructor
-        # Ensure MCP configuration (e.g., server endpoints) is handled
-        # either through these args/kwargs or environment variables
-        # as supported by the underlying Pydantic AI Agent.
         super().__init__(*args, **kwargs)
         self.beliefs = BeliefSet()
         self.desires: List[Desire] = []
@@ -108,7 +104,6 @@ class BDI(Agent, Generic[T]):
             if self.beliefs.beliefs
             else "No current beliefs."
         )
-        # Removed: tools_text based on self.tool_configs. The base Agent injects available tools.
 
         # --- Stage 1: Generate High-Level Intentions ---
         guidance_section = ""
@@ -142,7 +137,6 @@ class BDI(Agent, Generic[T]):
         Respond with a list of high-level intentions using the required format. Associate each intention with its corresponding desire ID.
         """
         try:
-            # Use the base agent's run method
             stage1_result = await self.run(
                 prompt_stage1, output_type=HighLevelIntentionList
             )
@@ -200,7 +194,6 @@ class BDI(Agent, Generic[T]):
             Provide parameters for tool calls based on the context and beliefs.
             """
             try:
-                # Use the base agent's run method
                 stage2_result = await self.run(
                     prompt_stage2, output_type=DetailedStepList
                 )
@@ -220,7 +213,6 @@ class BDI(Agent, Generic[T]):
                         f"{bcolors.SYSTEM}    Generated {len(detailed_steps)} detailed steps.{bcolors.ENDC}"
                     )
 
-                # Assemble the final intention
                 final_intention = Intention(
                     desire_id=hl_intention.desire_id, steps=detailed_steps
                 )
@@ -259,10 +251,6 @@ class BDI(Agent, Generic[T]):
             )
             return False
 
-        # Note: AgentRunResult doesn't have error_details attribute directly
-        # Error handling is now managed differently in the new version
-
-        # --- Belief Update Placeholder ---
         if self.verbose:
             print(
                 f"{bcolors.SYSTEM}  (Belief update check based on result: {result.output}){bcolors.ENDC}"
@@ -313,7 +301,6 @@ class BDI(Agent, Generic[T]):
 
         intention = self.intentions[0]
 
-        # Should not happen if called correctly, but safeguard
         if intention.current_step >= len(intention.steps):
             return
 
@@ -321,7 +308,6 @@ class BDI(Agent, Generic[T]):
             f"{bcolors.SYSTEM}  Reconsidering intention for desire '{intention.desire_id}'...{bcolors.ENDC}"
         )
 
-        # Format current beliefs
         beliefs_text = (
             "\n".join(
                 [
@@ -333,7 +319,6 @@ class BDI(Agent, Generic[T]):
             else "  No current beliefs."
         )
 
-        # Format remaining steps
         remaining_steps_list = intention.steps[intention.current_step :]
         remaining_steps_text = "\n".join(
             [f"  - {s.description}" for s in remaining_steps_list]
@@ -391,7 +376,6 @@ class BDI(Agent, Generic[T]):
                 )
                 invalid_intention = self.intentions.popleft()
 
-                # Mark the desire as PENDING to allow replanning
                 for desire in self.desires:
                     if desire.id == invalid_intention.desire_id:
                         print(
@@ -399,9 +383,7 @@ class BDI(Agent, Generic[T]):
                         )
                         desire.update_status(DesireStatus.PENDING, self.log_states)
                         break
-                self.log_states(
-                    ["intentions", "desires"]
-                )  # Log state change immediately
+                self.log_states(["intentions", "desires"])
 
         except Exception as recon_e:
             print(
@@ -420,12 +402,10 @@ class BDI(Agent, Generic[T]):
 
         intention = self.intentions[0]
 
-        # Check if intention is already complete
         if intention.current_step >= len(intention.steps):
             print(
                 f"{bcolors.INTENTION}Intention for desire '{intention.desire_id}' already completed (found in execute_intentions).{bcolors.ENDC}"
             )
-            # Ensure desire is marked achieved and intention is removed
             if intention in self.intentions:
                 for desire in self.desires:
                     if desire.id == intention.desire_id:
@@ -474,33 +454,24 @@ class BDI(Agent, Generic[T]):
                 print(
                     f"{bcolors.INTENTION}  Step {intention.current_step + 1} successful.{bcolors.ENDC}"
                 )
-                # Increment step counter *only on success*
-                intention.increment_current_step(
-                    self.log_states
-                )  # Log state change here
+                intention.increment_current_step(self.log_states)
 
-                # Check if this was the last step
                 if intention.current_step >= len(intention.steps):
                     print(
                         f"{bcolors.INTENTION}Completed final step. Intention for desire '{intention.desire_id}' finished.{bcolors.ENDC}"
                     )
-                    # Mark desire achieved and remove intention
                     for desire in self.desires:
                         if desire.id == intention.desire_id:
                             desire.update_status(DesireStatus.ACHIEVED, self.log_states)
                             break
-                    # Remove completed intention (important: check it's still the first one)
                     if self.intentions and self.intentions[0] == intention:
                         self.intentions.popleft()
                     self.log_states(["intentions", "desires"])
             else:
-                # Step failed analysis, but don't discard intention yet.
-                # Reconsideration will handle if the whole plan is invalid.
                 print(
                     f"{bcolors.WARNING}  Step {intention.current_step + 1} failed analysis. Intention progress paused. Reconsideration pending.{bcolors.ENDC}"
                 )
 
-                # Human-in-the-loop intervention if enabled
                 hitl_success = False
                 if self.enable_human_in_the_loop:
                     try:
@@ -514,15 +485,12 @@ class BDI(Agent, Generic[T]):
                         if self.verbose:
                             traceback.print_exc()
 
-                # If HITL was successful, we can try executing again in the next cycle
-                # If not, the step remains failed and reconsideration will handle it
                 if hitl_success:
                     print(
                         f"{bcolors.SYSTEM}  HITL intervention successful. Step will be retried in next cycle.{bcolors.ENDC}"
                     )
                 else:
-                    # Do not increment step counter. Beliefs were updated in _analyze...
-                    self.log_states(["beliefs"])  # Log updated beliefs after failure
+                    self.log_states(["beliefs"])
 
         except Exception as e:
             print(
@@ -531,21 +499,19 @@ class BDI(Agent, Generic[T]):
             print(
                 f"{bcolors.FAIL}Exception during execution/analysis of step for intention '{intention.desire_id}':{bcolors.ENDC}"
             )
-            traceback.print_exc()  # Print full traceback for debugging
+            traceback.print_exc()
             print(f"{bcolors.FAIL}Error Message: {e}{bcolors.ENDC}")
             print(
                 f"{bcolors.FAIL}------------------------------------------------------------{bcolors.ENDC}"
             )
 
-            # Mark intention/desire as FAILED due to unexpected error
             for desire in self.desires:
                 if desire.id == intention.desire_id:
                     desire.update_status(DesireStatus.FAILED, self.log_states)
                     break
-            # Remove failed intention
             if self.intentions and self.intentions[0] == intention:
                 self.intentions.popleft()
-            self.log_states(["intentions", "desires"])  # Log state change
+            self.log_states(["intentions", "desires"])
 
     async def bdi_cycle(self) -> None:
         """Run one BDI reasoning cycle including reconsideration."""
@@ -584,9 +550,7 @@ class BDI(Agent, Generic[T]):
         else:
             if self.verbose:
                 print(f"{bcolors.INTENTION}Current Intentions:{bcolors.ENDC}")
-                self.log_states(
-                    ["intentions"]
-                )  # Use log_states for consistent formatting
+                self.log_states(["intentions"])
             if not self.intentions:
                 print(
                     f"{bcolors.SYSTEM}No intentions pending and no active desires require new ones.{bcolors.ENDC}"
@@ -608,7 +572,6 @@ class BDI(Agent, Generic[T]):
             ):
                 await self._reconsider_current_intention()
             else:
-                # Intention was completed or removed during execution/analysis phase.
                 print(
                     f"{bcolors.SYSTEM}  Skipping reconsideration: Current intention just completed, removed, or has no steps.{bcolors.ENDC}"
                 )
@@ -696,7 +659,7 @@ class BDI(Agent, Generic[T]):
             "step_result_output": step_result.output
             if step_result and hasattr(step_result, "output")
             else "No result data",
-            "llm_step_assessment": "Step was deemed a FAILURE by internal analysis.",  # Placeholder, can be enhanced
+            "llm_step_assessment": "Step was deemed a FAILURE by internal analysis.",
             "current_beliefs": {
                 name: {
                     "value": b.value,
@@ -717,7 +680,7 @@ class BDI(Agent, Generic[T]):
                 }
                 for s in intention.steps[intention.current_step + 1 :]
             ],
-            "original_failed_step_object": failed_step.model_dump(),  # Full object for LLM context
+            "original_failed_step_object": failed_step.model_dump(),
         }
         return context
 
@@ -753,7 +716,7 @@ class BDI(Agent, Generic[T]):
                     )
             else:
                 print("  (None)")
-        else:  # Is a string "No current beliefs."
+        else:
             print(f"  {failure_context['current_beliefs']}")
 
         if failure_context["remaining_plan_steps"]:
@@ -778,29 +741,25 @@ class BDI(Agent, Generic[T]):
                 f"{bcolors.SYSTEM}  Interpreting user NL guidance via LLM...{bcolors.ENDC}"
             )
 
-        # Prepare context for the LLM: Convert complex objects to JSON strings for easier inclusion in prompt
-        # The base Pydantic AI Agent handles tool configuration injection.
-        # We primarily need to provide the failure scenario and user input.
+        """
+        Prepare context for the LLM: Convert complex objects to JSON strings for easier inclusion in prompt
+        The base Pydantic AI Agent handles tool configuration injection.
+        We primarily need to provide the failure scenario and user input.
 
-        # Get available tool names and their descriptions/schemas for the LLM
-        # The base Agent class usually handles injecting tool schemas.
-        # If not directly available, we might need to re-format self.tool_configs if it exists
-        # or rely on the base Agent's prompt formatting.
-        # For now, assume the base self.run() handles tool schema presentation.
+        Get available tool names and their descriptions/schemas for the LLM
+        The base Agent class usually handles injecting tool schemas.
+        If not directly available, we might need to re-format self.tool_configs if it exists
+        or rely on the base Agent's prompt formatting.
+        For now, assume the base self.run() handles tool schema presentation.
+        """
         tools_description_for_llm = "Available tools will be provided by the system. Focus on their general capabilities if specific schemas aren't listed here."
         if hasattr(self, "tool_configs") and self.tool_configs:
             tools_list = []
             for tool_name, tool_config in self.tool_configs.items():
-                # tool_config could be a Pydantic model or a function
-                # We need a way to get its description or schema.
-                # This is a simplified representation; actual tool schema injection can be complex.
                 schema_info = "Schema: (provided by system)"
-                if hasattr(
-                    tool_config, "model_json_schema"
-                ):  # Pydantic model based tool
+                if hasattr(tool_config, "model_json_schema"):
                     schema_info = f"Input schema: {json.dumps(tool_config.model_json_schema().get('properties', {}))}"
-                elif callable(tool_config):  # Function based tool
-                    # Try to get docstring for description
+                elif callable(tool_config):
                     docstring = getattr(tool_config, "__doc__", "No description.")
                     schema_info = (
                         f"Description: {docstring.strip() if docstring else 'N/A'}"
@@ -846,7 +805,6 @@ class BDI(Agent, Generic[T]):
 
         try:
             if self.verbose:
-                # print(f"{bcolors.SYSTEM}  LLM Prompt for NL Guidance Interpretation:\\n{prompt}{bcolors.ENDC}") # Can be very long
                 print(
                     f"{bcolors.SYSTEM}  Sending user guidance to LLM for interpretation...{bcolors.ENDC}"
                 )
@@ -925,18 +883,13 @@ class BDI(Agent, Generic[T]):
         )
         original_desire_id = intention.desire_id
 
-        # Remove the intention
-        # Need to be careful if self.intentions can be modified elsewhere concurrently (not typical for BDI cycle)
-        if (
-            self.intentions and self.intentions[0] == intention
-        ):  # Ensure it is still the current one
+        if self.intentions and self.intentions[0] == intention:
             self.intentions.popleft()
             self.log_states(
                 ["intentions"],
                 message=f"Intention for desire '{original_desire_id}' removed due to user abort.",
             )
         else:
-            # This case should ideally not happen if called correctly from HITL on current intention
             try:
                 self.intentions.remove(intention)
                 self.log_states(
@@ -948,17 +901,13 @@ class BDI(Agent, Generic[T]):
                     f"{bcolors.WARNING}  Warning: Intention for desire '{original_desire_id}' not found in queue during abort.{bcolors.ENDC}"
                 )
 
-        # Set corresponding desire to PENDING for replanning
         for desire_obj in self.desires:
             if desire_obj.id == original_desire_id:
-                desire_obj.update_status(
-                    DesireStatus.PENDING, self.log_states
-                )  # log_states called within update_status
+                desire_obj.update_status(DesireStatus.PENDING, self.log_states)
                 print(
                     f"{bcolors.DESIRE}  Desire '{original_desire_id}' status set to PENDING for potential replanning.{bcolors.ENDC}"
                 )
                 break
-        # No need to log desires again here as update_status does it
 
     async def _apply_user_guided_action(
         self,
@@ -967,7 +916,7 @@ class BDI(Agent, Generic[T]):
     ) -> bool:
         """Applies the plan manipulation based on the LLM-interpreted and user-confirmed guidance."""
 
-        idx = intention.current_step  # Index of the current (failed) step
+        idx = intention.current_step
         applied_successfully = False
 
         manip_type = directive.manipulation_type
@@ -977,13 +926,11 @@ class BDI(Agent, Generic[T]):
 
         try:
             if manip_type == "RETRY_CURRENT_AS_IS":
-                # No change to plan needed, will be retried in next execution attempt.
                 applied_successfully = True
 
             elif manip_type == "MODIFY_CURRENT_AND_RETRY":
                 if directive.current_step_modifications and idx < len(intention.steps):
                     step_to_modify = intention.steps[idx]
-                    # Example: Update fields of the Pydantic model directly
                     for (
                         field_name,
                         new_value,
@@ -1003,9 +950,7 @@ class BDI(Agent, Generic[T]):
                     print(
                         f"{bcolors.WARNING}  No modifications provided or invalid step index for MODIFY_CURRENT_AND_RETRY. Retrying as is.{bcolors.ENDC}"
                     )
-                    applied_successfully = (
-                        True  # Default to retry if modification fails
-                    )
+                    applied_successfully = True
 
             elif manip_type in [
                 "REPLACE_CURRENT_STEP_WITH_NEW",
@@ -1031,7 +976,6 @@ class BDI(Agent, Generic[T]):
                     elif manip_type == "INSERT_NEW_STEPS_BEFORE_CURRENT":
                         for i, new_step in enumerate(new_steps_list):
                             intention.steps.insert(idx + i, new_step)
-                        # current_step index (idx) now points to the first of the new steps.
                     elif manip_type == "INSERT_NEW_STEPS_AFTER_CURRENT":
                         insert_point = idx + 1
                         for i, new_step in enumerate(new_steps_list):
@@ -1039,17 +983,12 @@ class BDI(Agent, Generic[T]):
                     elif manip_type == "REPLACE_REMAINDER_OF_PLAN":
                         intention.steps = intention.steps[:idx]
                         intention.steps.extend(new_steps_list)
-                        if (
-                            not intention.steps
-                        ):  # If new steps were empty and plan is now empty
+                        if not intention.steps:
                             print(
                                 f"{bcolors.WARNING}  Plan became empty after REPLACE_REMAINDER. Aborting intention.{bcolors.ENDC}"
                             )
                             await self._handle_user_abort_request(intention)
-                            # If aborted, this path is effectively done. Ensure applied_successfully reflects outcome.
-                            return (
-                                True  # Abort is a successful application of guidance.
-                            )
+                            return True
 
                     self.log_states(
                         ["intentions"],
@@ -1060,13 +999,11 @@ class BDI(Agent, Generic[T]):
                     print(
                         f"{bcolors.WARNING}  No new steps provided for {manip_type}. Reconsidering.{bcolors.ENDC}"
                     )
-                    applied_successfully = (
-                        False  # Did not apply the intended manipulation
-                    )
+                    applied_successfully = False
 
             elif manip_type == "SKIP_CURRENT_STEP":
                 if idx < len(intention.steps):
-                    intention.increment_current_step(self.log_states)  # Handles logging
+                    intention.increment_current_step(self.log_states)
                     if intention.current_step >= len(intention.steps):
                         print(
                             f"{bcolors.INTENTION}  Skipping step completed intention for desire '{intention.desire_id}'.{bcolors.ENDC}"
@@ -1077,9 +1014,7 @@ class BDI(Agent, Generic[T]):
                                     DesireStatus.ACHIEVED, self.log_states
                                 )
                                 break
-                        if (
-                            self.intentions and self.intentions[0] == intention
-                        ):  # Ensure it is still the current one
+                        if self.intentions and self.intentions[0] == intention:
                             self.intentions.popleft()
                         self.log_states(["intentions", "desires"])
                     applied_successfully = True
@@ -1091,31 +1026,25 @@ class BDI(Agent, Generic[T]):
 
             elif manip_type == "ABORT_INTENTION":
                 await self._handle_user_abort_request(intention)
-                applied_successfully = (
-                    True  # Aborting as per guidance is a successful application
-                )
+                applied_successfully = True
 
             elif manip_type == "UPDATE_BELIEFS_AND_RETRY":
                 if directive.beliefs_to_update:
                     for name, belief_data_dict in directive.beliefs_to_update.items():
-                        # Ensure required fields for Belief model, or rely on Belief model defaults / validation
-                        belief_data_dict.setdefault(
-                            "name", name
-                        )  # Ensure name is in the dict for Belief(**belief_data_dict)
+                        belief_data_dict.setdefault("name", name)
                         belief_data_dict.setdefault("source", "human_guidance")
                         belief_data_dict.setdefault("certainty", 1.0)
                         belief_data_dict.setdefault(
                             "timestamp", datetime.now().timestamp()
                         )
                         try:
-                            # Assuming BeliefSet.update handles creation if not exists
                             self.beliefs.update(
                                 name=name,
                                 value=belief_data_dict["value"],
                                 source=belief_data_dict["source"],
                                 certainty=belief_data_dict["certainty"],
-                            )  # .update automatically handles timestamp
-                        except KeyError as e:  # e.g. if 'value' is missing
+                            )
+                        except KeyError as e:
                             print(
                                 f"{bcolors.FAIL}  Failed to update belief '{name}' due to missing data: {e}{bcolors.ENDC}"
                             )
@@ -1130,15 +1059,13 @@ class BDI(Agent, Generic[T]):
                     print(
                         f"{bcolors.WARNING}  User Guidance: Update beliefs, but no beliefs provided. Retrying as is.{bcolors.ENDC}"
                     )
-                applied_successfully = (
-                    True  # Will retry current step with (potentially) updated beliefs
-                )
+                applied_successfully = True
 
             elif manip_type == "COMMENT_NO_ACTION":
                 print(
                     f"{bcolors.SYSTEM}  User comment received, no direct action on plan. Reconsidering.{bcolors.ENDC}"
                 )
-                applied_successfully = False  # No change to plan, so step effectively still failed analysis for progression
+                applied_successfully = False
 
             else:
                 print(
@@ -1237,7 +1164,6 @@ class BDI(Agent, Generic[T]):
             print(
                 f"{bcolors.SYSTEM}User declined to apply guidance. Trying again...{bcolors.ENDC}"
             )
-            # Recursive call to allow user to provide different guidance
             return await self._human_in_the_loop_intervention(
                 intention, failed_step, step_result
             )
@@ -1246,7 +1172,6 @@ class BDI(Agent, Generic[T]):
             try:
                 revised_input = input("> ").strip()
                 if revised_input:
-                    # Recursive call with new input
                     revised_directive = await self._interpret_user_nl_guidance(
                         revised_input, failure_context
                     )
