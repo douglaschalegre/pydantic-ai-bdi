@@ -25,9 +25,15 @@ graph TD
     H5 --> H7[_analyze_step_outcome_and_update_beliefs]
     H6 --> H7
     
-    H7 --> H8{Step successful?}
-    H8 -->|Yes| H9[Increment step counter]
-    H8 -->|No| H10{HITL enabled?}
+    H7 --> H7A[_generate_history_context<br/>Get recent step history]
+    H7A --> H7B[Enhanced LLM assessment<br/>with historical context]
+    H7B --> H8{Step successful?}
+    
+    H8 -->|Yes| H8A[Record step success<br/>in intention.step_history]
+    H8 -->|No| H8B[Record step failure<br/>in intention.step_history]
+    
+    H8A --> H9[Increment step counter]
+    H8B --> H10{HITL enabled?}
     
     H9 --> H11{Final step?}
     H11 -->|Yes| H12[Mark desire achieved<br/>Remove intention]
@@ -86,7 +92,8 @@ graph TD
     J -->|No| L[End BDI cycle]
     
     K --> K1[Format beliefs and remaining steps]
-    K1 --> K2[Ask LLM to assess plan validity]
+    K1 --> K1A[_generate_history_context<br/>Get detailed step history<br/>max_history=5, include_details=True]
+    K1A --> K2[Enhanced LLM plan assessment<br/>with historical patterns analysis]
     K2 --> K3{Plan still valid?}
     K3 -->|Yes| L
     K3 -->|No| K4[Remove invalid intention<br/>Set desire to PENDING]
@@ -95,9 +102,21 @@ graph TD
     L --> M[log_states]
     M --> N[BDI Cycle Complete]
     
+    %% Exception handling path
+    H5 -.->|Exception| EX1[Record exception<br/>in step_history]
+    H6 -.->|Exception| EX1
+    EX1 --> EX2[Mark desire as FAILED<br/>Remove intention]
+    EX2 --> J
+    
     style A fill:#e1f5fe
     style D fill:#f3e5f5
     style F fill:#e8f5e8
     style H fill:#fff3e0
     style H14 fill:#ffebee
     style K fill:#f1f8e9
+    style H7A fill:#e3f2fd
+    style H8A fill:#e8f5e8
+    style H8B fill:#ffebee
+    style K1A fill:#e3f2fd
+    style EX1 fill:#ffcdd2
+    style EX2 fill:#ffcdd2
