@@ -1,69 +1,154 @@
 # Pydantic AI BDI Framework
 
-A Belief-Desire-Intention (BDI) agent framework built on top of the Pydantic AI library.
+A sophisticated **BDI (Belief-Desire-Intention) agent framework** built on top of Pydantic AI. BDI is a cognitive architecture for intelligent agents that models how agents reason about their environment and make decisions.
 
 ## Overview
 
-This project implements a BDI architecture for intelligent agents by extending the Pydantic AI Agent class. The BDI model is a popular approach in artificial intelligence for modeling rational agents, originally developed by Michael Bratman and implemented in various agent programming languages.
+This project implements a BDI architecture that extends Pydantic AI's `Agent` class with the classic BDI cognitive model. The framework provides structured reasoning, adaptive planning, and human collaboration capabilities for building autonomous agents that can handle complex, multi-step tasks.
 
-## Core Concepts
+## Core Components
 
-### BDI Architecture
+### BDI Agent (`bdi.py`)
+The main `BDI` class extends Pydantic AI's `Agent` class and implements the classic BDI architecture:
+- **Beliefs**: Information the agent holds about the world (managed by `BeliefSet`)
+- **Desires**: High-level goals the agent wants to achieve  
+- **Intentions**: Concrete plans of action (sequences of steps) to fulfill desires
 
-The BDI (Belief-Desire-Intention) model structures intelligent agents around three key mental attitudes:
+### Data Schemas (`schemas.py`)
+Defines the core data structures using Pydantic models:
+- `Belief`: Represents facts the agent knows (with certainty, source, timestamp)
+- `Desire`: High-level goals with priority and status tracking
+- `Intention`: Structured plans containing sequential `IntentionStep` objects
+- `IntentionStep`: Individual actionable steps that can be either tool calls or descriptive tasks
 
-- **Beliefs**: The agent's knowledge about the world, which may be incomplete or incorrect.
-- **Desires**: Goals the agent would like to achieve.
-- **Intentions**: Commitments to action plans that the agent has decided to pursue.
+## Key Features
 
-### Reasoning Cycle
+### 1. Two-Stage Planning
+The agent uses a sophisticated planning approach:
+- **Stage 1**: Converts desires into high-level intentions using LLM reasoning
+- **Stage 2**: Breaks down each high-level intention into detailed, executable steps
 
-The BDI agent executes a continuous reasoning cycle:
+### 2. Human-in-the-Loop (HITL)
+When a step fails, the agent can:
+- Present the failure context to a human user
+- Accept natural language guidance from the user
+- Use an LLM to interpret the guidance into structured plan modifications
+- Apply various manipulation types (retry, modify, replace, skip, abort, etc.)
 
-1. **Perception**: Update beliefs based on new information
-   - Automatic perception from registered perception tools 
-   - Manual perception from external sources (optional)
-2. **Deliberation**: Generate desires based on current beliefs (Currently implicit; could be formalized with desire generators)
-3. **Intention Generation (Two-Stage)**: Form intentions (concrete action plans) based on desires, beliefs, and optional user guidance.
-   - **Stage 1 (What)**: Generate high-level intentions based on desires, current beliefs, available tools, and any initial user guidance. Focuses on *what* needs to be done.
-   - **Stage 2 (How)**: For each high-level intention, generate a detailed, step-by-step action plan using current beliefs and available tools. Focuses on *how* to achieve the goal.
-4. **Action**: Execute the steps of the current intention.
+### 3. Plan Reconsideration
+After each step execution, the agent evaluates whether the remaining plan is still valid based on:
+- Current beliefs
+- Step execution history
+- Changed circumstances
 
-## Features
+### 4. MCP Server Integration
+The agent integrates with MCP (Model Context Protocol) servers to access external tools, enabling connection to various external capabilities.
 
-- **Type-Safe Agents**: Built on Pydantic for robust data validation and type safety
-- **Modular Components**: Customizable perception handlers
-- **Decorator-Based API**: Simple decorator-based API for registering components like perception handlers and tools
-- **Two-Stage Intention Generation**: Separates the planning process into identifying *what* needs to be done (high-level intentions) and *how* to do it (detailed steps), using LLM calls for potentially deeper reasoning.
-- **Initial Intention Guidance**: Allows users to provide high-level strategic guidance during agent initialization, influencing the planning process without rigidly defining the final intentions.
-- **Tool Integration**: Seamless integration with Pydantic AI's tool system
-- **Phase-Specific Tools**: Tools can be registered for specific phases of the BDI cycle (perception, intention, etc.)
-- **Automatic Perception**: BDI cycles automatically gather perceptions from all registered perception tools
+## BDI Reasoning Cycle
 
-### Tools
+The agent runs a continuous reasoning cycle:
 
-Tools are registered with the `@agent.bdi_tool` decorator. They can be registered for specific phases of the BDI cycle.
+1. **Belief Update**: Update beliefs based on action outcomes
+2. **Deliberation**: Check desire statuses and priorities
+3. **Intention Generation**: Create new plans if needed using two-stage LLM planning
+4. **Intention Execution**: Execute one step of the current plan
+5. **Reconsideration**: Evaluate if the plan should continue or be modified
 
-- Perception phase: Tools that gather information from the environment to update beliefs
-- Desire phase: Tools that help evaluate conditions when generating desires
-- Intention phase: Tools that execute actions to fulfill intentions
-- General phase: Tools available in all phases (default if no phase is specified)
+## Architecture Benefits
+
+This implementation provides:
+
+- **Structured reasoning**: Clear separation of beliefs, desires, and intentions
+- **Adaptive planning**: Can reconsider and modify plans based on outcomes
+- **Human collaboration**: Allows human intervention when automated planning fails
+- **Tool integration**: Seamless connection to external capabilities via MCP
+- **Explainable AI**: Verbose logging makes the agent's reasoning transparent
+- **Type safety**: Built on Pydantic for robust data validation
+
+## Human-in-the-Loop Features
+
+When enabled, the HITL system provides:
+- **Failure Analysis**: Detailed context about why a step failed
+- **Natural Language Guidance**: Users can provide instructions in plain English
+- **LLM Interpretation**: Automatic translation of user guidance into structured actions
+- **Plan Manipulation**: Various ways to modify the current plan:
+  - Retry current step as-is
+  - Modify current step parameters
+  - Replace current step with new ones
+  - Insert new steps before/after current
+  - Skip current step
+  - Abort entire intention
+  - Update beliefs and retry
 
 ## Applications
 
-The BDI framework is suitable for a wide range of applications:
+The BDI framework is suitable for:
 
-- Smart home automation
-- Autonomous robots
-- Personal assistants
-- Multi-agent systems
-- Decision support systems
-- Game AI
+- **Research assistants**: Conducting multi-step research tasks
+- **Data analysis**: Complex analytical workflows
+- **Content generation**: Multi-stage content creation pipelines
+- **System automation**: Adaptive automation that can handle failures
+- **Decision support**: Structured decision-making processes
 
 ## Requirements
 
-- Python 3.9+
-- Pydantic AI library
+- Python 3.10+
+- An LLM API key or ollama server
+
+## Installation
+
+```bash
+pip install pipenv
+export PIPENV_VENV_IN_PROJECT="enabled"
+mkdir .venv
+pipenv shell
+pipenv install
+```
+
+## Usage Example
+
+```python
+# example.py
+import asyncio
+from pydantic_ai.mcp import MCPServerStdio
+from pydantic_ai.models.openai import OpenAIModel
+from bdi import BDI
+
+# Create an MCP server for git
+git_server = MCPServerStdio(
+    "uvx", args=["mcp-server-git"], tool_prefix="git", timeout=60
+)
+
+# Create a BDI agent
+agent = BDI(
+    model=OpenAIModel("gpt-4o"),
+    desires=[
+        "I need a report of the commit history of the pydantic-ai repository"
+    ],
+    intentions=[
+        "Check the commit history of the pydantic-ai repository",
+        "Summarize the commit history",
+        "Create a presentation of the commit history"
+    ],
+    verbose=True,
+    enable_human_in_the_loop=True,
+    mcp_servers=[git_server]  # External tool integration
+)
+
+async def main():
+    async with agent.run_mcp_servers():
+        for i in range(5):
+            print(f"\n===== Cycle {i + 1} =====")
+            await agent.bdi_cycle()
+            await asyncio.sleep(2)
+
+asyncio.run(main())
+```
+## Running the example
+
+```bash
+pipenv run python example.py
+```
 
 ## License
 
