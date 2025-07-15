@@ -568,13 +568,13 @@ class BDI(Agent, Generic[T]):
         # We still print current beliefs at the start.
         if self.verbose:
             print(f"{bcolors.BELIEF}Current Beliefs:{bcolors.ENDC}")
-            self.log_states(["beliefs"])  # Use log_states for consistent formatting
+            self.log_states(["beliefs"])
 
         # 2. Deliberation / Desire Status Check
         # Check for active/pending desires.
         if self.verbose:
             print(f"{bcolors.DESIRE}Current Desires:{bcolors.ENDC}")
-            self.log_states(["desires"])  # Use log_states for consistent formatting
+            self.log_states(["desires"])
         active_desires = [
             d
             for d in self.desires
