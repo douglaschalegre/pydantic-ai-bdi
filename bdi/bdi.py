@@ -10,8 +10,8 @@ from typing import (
 from collections import deque
 from pydantic_ai import Agent
 from pydantic_ai.agent import AgentRunResult
-from util import bcolors
-from schemas import (
+from helper.util import bcolors
+from bdi.schemas import (
     Belief,
     BeliefSet,
     Desire,

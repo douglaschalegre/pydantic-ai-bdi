@@ -154,9 +154,6 @@ class Intention(BaseModel):
         )
 
 
-# --- LLM Response Models for Intention Generation ---
-
-
 class HighLevelIntention(BaseModel):
     desire_id: str = Field(
         description="The ID of the desire this intention relates to."
@@ -178,7 +175,6 @@ class DetailedStepList(BaseModel):
     steps: List[IntentionStep]
 
 
-# LLM Response Models for Reconsideration
 class ReconsiderResult(BaseModel):
     valid: bool
     reason: str | None = None
@@ -231,3 +227,17 @@ class PlanManipulationDirective(BaseModel):
         ...,
         description="The LLM's brief summary of its understanding of the user's guidance and the rationale for the chosen manipulation.",
     )
+
+
+__all__ = [
+    "Belief",
+    "BeliefSet",
+    "Desire",
+    "DesireStatus",
+    "Intention",
+    "IntentionStep",
+    "HighLevelIntentionList",
+    "DetailedStepList",
+    "ReconsiderResult",
+    "PlanManipulationDirective",
+]
