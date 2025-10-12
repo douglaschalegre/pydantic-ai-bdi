@@ -123,6 +123,10 @@ class Intention(BaseModel):
     """Represents a committed plan of action (sequence of steps) to achieve a desire."""
 
     desire_id: str
+    description: str | None = Field(
+        default=None,
+        description="High-level intention description (WHAT to achieve), separate from current executing step.",
+    )
     steps: List[IntentionStep]
     current_step: int = 0
     step_history: List[StepHistory] = []
