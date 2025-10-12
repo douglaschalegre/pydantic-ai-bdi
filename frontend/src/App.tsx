@@ -1,71 +1,203 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import type {
   AgentConfigInput,
   AgentState,
   ChatMessage,
   AgentEvent,
 } from "../types";
-import { mockCreateAgent, mockSubscribe } from "./mockBackend";
+import { mockCreateAgent, mockSubscribe, mockStopAgent } from "./mockBackend";
+import { apiMode, realApi } from "./api";
 
 interface LocalState {
-  agent?: AgentState;
-  messages: ChatMessage[];
+  currentAgentId?: string;
+  agents: Record<string, AgentState>; // latest snapshot per agent
+  messagesByAgent: Record<string, ChatMessage[]>; // persistent chat logs per agent
   creating: boolean;
   brief: string;
   error?: string;
+  agentList: {
+    agent_id: string;
+    status: string;
+    cycle_count: number;
+    created_at: string;
+    brief: string;
+  }[];
+  loadingList: boolean;
 }
 
 export function App() {
   const [state, setState] = useState<LocalState>({
-    messages: [],
+    currentAgentId: undefined,
+    agents: {},
+    messagesByAgent: {},
     creating: false,
     brief: "",
+    agentList: [],
+    loadingList: false,
   });
-  const eventSubRef = useRef<() => void>();
+  const subscriptionsRef = useRef<Record<string, () => void>>({});
 
+  // Cleanup all subscriptions on unmount
   useEffect(
     () => () => {
-      eventSubRef.current?.();
+      Object.values(subscriptionsRef.current).forEach((u) => u());
     },
     []
   );
+
+  const refreshList = useCallback(async () => {
+    if (apiMode !== "real") return; // skip for mock
+    setState((s) => ({ ...s, loadingList: true }));
+    try {
+      const list = await realApi.listAgentsReal();
+      setState((s) => ({ ...s, agentList: list, loadingList: false }));
+      // auto-subscribe to running agents so their chats continue updating in background
+      list
+        .filter((a) => a.status === "running")
+        .forEach((a) => ensureSubscription(a.agent_id));
+    } catch {
+      setState((s) => ({ ...s, loadingList: false }));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!state.currentAgentId) {
+      void refreshList();
+    }
+  }, [state.currentAgentId, refreshList]);
+
+  const ensureSubscription = (agentId: string) => {
+    if (subscriptionsRef.current[agentId]) return; // already subscribed
+    if (apiMode === "real") {
+      subscriptionsRef.current[agentId] = realApi.openEventStream(
+        agentId,
+        (evt: AgentEvent) => {
+          setState((s) => handleEvent(s, agentId, evt));
+        }
+      );
+    } else {
+      subscriptionsRef.current[agentId] = mockSubscribe(
+        agentId,
+        (evt: AgentEvent) => {
+          setState((s) => handleEvent(s, agentId, evt));
+        }
+      );
+    }
+  };
+
+  const openExisting = async (agentId: string) => {
+    try {
+      const agentState = await realApi.loadAgentState(agentId);
+      setState((s) => ({
+        ...s,
+        currentAgentId: agentId,
+        agents: { ...s.agents, [agentId]: agentState },
+        messagesByAgent: {
+          ...s.messagesByAgent,
+          [agentId]: s.messagesByAgent[agentId] || [],
+        },
+      }));
+      ensureSubscription(agentId);
+    } catch (e) {
+      setState((s) => ({
+        ...s,
+        error: e instanceof Error ? e.message : String(e),
+      }));
+    }
+  };
 
   const onCreate = async () => {
     if (!state.brief.trim()) return;
     setState((s) => ({ ...s, creating: true, error: undefined }));
     try {
-      const res = await mockCreateAgent({
-        brief: state.brief,
-      } as AgentConfigInput);
+      let res: { state: AgentState; initialMessages?: ChatMessage[] };
+      if (apiMode === "real") {
+        res = await realApi.createAgentReal({ brief: state.brief });
+      } else {
+        res = await mockCreateAgent({ brief: state.brief } as AgentConfigInput);
+      }
+      setState((s) => {
+        const id = res.state.agentId;
+        return {
+          ...s,
+          currentAgentId: id,
+          agents: { ...s.agents, [id]: res.state },
+          messagesByAgent: {
+            ...s.messagesByAgent,
+            [id]: res.initialMessages ?? [],
+          },
+          creating: false,
+        };
+      });
+      ensureSubscription(res.state.agentId);
+    } catch (e) {
       setState((s) => ({
         ...s,
-        agent: res.state,
-        messages: res.initialMessages ?? [],
         creating: false,
-      }));
-      // subscribe to events
-      eventSubRef.current = mockSubscribe(
-        res.state.agentId,
-        (evt: AgentEvent) => {
-          setState((s) => handleEvent(s, evt));
-        }
-      );
-    } catch (e: any) {
-      setState((s) => ({
-        ...s,
-        creating: false,
-        error: e?.message || "Failed to create agent",
+        error:
+          (e instanceof Error ? e.message : String(e)) ||
+          "Failed to create agent",
       }));
     }
   };
 
-  if (!state.agent) {
+  // Auto-scroll refs (must be declared unconditionally before any return)
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const autoScrollRef = useRef(true);
+
+  // Derive active agent & messages (memoized to avoid effect churn)
+  const activeAgent = useMemo(
+    () =>
+      state.currentAgentId ? state.agents[state.currentAgentId] : undefined,
+    [state.currentAgentId, state.agents]
+  );
+  const activeMessages = useMemo(
+    () =>
+      state.currentAgentId
+        ? state.messagesByAgent[state.currentAgentId] || []
+        : [],
+    [state.currentAgentId, state.messagesByAgent]
+  );
+
+  useEffect(() => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    const handleScroll = () => {
+      const distanceFromBottom =
+        el.scrollHeight - el.scrollTop - el.clientHeight;
+      autoScrollRef.current = distanceFromBottom < 40; // re-enable when near bottom
+    };
+    el.addEventListener("scroll", handleScroll);
+    return () => el.removeEventListener("scroll", handleScroll);
+  }, [state.currentAgentId]);
+
+  useEffect(() => {
+    if (!autoScrollRef.current) return;
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [activeMessages, state.currentAgentId]);
+
+  const onStop = async () => {
+    const current = state.currentAgentId && state.agents[state.currentAgentId];
+    if (!current) return;
+    if (apiMode === "real") {
+      await realApi.stopAgentReal(current.agentId);
+    } else {
+      mockStopAgent(current.agentId);
+    }
+  };
+
+  if (!state.currentAgentId) {
     return (
       <div className="app-container">
-        <h1>BDI Agent Prototype</h1>
+        <h1>
+          BDI Agent Prototype ({apiMode === "real" ? "Real API" : "Mock"})
+        </h1>
         <p>
           Enter a brief describing what you want the agent to pursue. It will
-          extract desires & intentions (mocked).
+          extract desires & intentions.
         </p>
         <textarea
           value={state.brief}
@@ -80,28 +212,124 @@ export function App() {
           >
             Create & Start
           </button>
+          {apiMode === "real" && (
+            <button
+              style={{ marginLeft: ".5rem" }}
+              onClick={() => void refreshList()}
+              disabled={state.loadingList}
+            >
+              Refresh
+            </button>
+          )}
         </div>
         {state.creating && <p>Creating agent...</p>}
         {state.error && <p className="error">{state.error}</p>}
+        {apiMode === "real" && (
+          <section style={{ marginTop: "1.5rem" }}>
+            <h2 style={{ margin: "0 0 .5rem" }}>Existing Agents</h2>
+            {state.loadingList && <p>Loading…</p>}
+            {!state.loadingList && state.agentList.length === 0 && (
+              <p style={{ fontSize: ".85rem", opacity: 0.7 }}>No agents yet.</p>
+            )}
+            <ul
+              style={{
+                listStyle: "none",
+                padding: 0,
+                margin: 0,
+                display: "flex",
+                flexDirection: "column",
+                gap: ".5rem",
+              }}
+            >
+              {state.agentList.map((a) => (
+                <li
+                  key={a.agent_id}
+                  style={{
+                    background: "#1b1f27",
+                    border: "1px solid #2d3341",
+                    borderRadius: 6,
+                    padding: ".6rem .75rem",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: ".35rem",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: "1rem",
+                    }}
+                  >
+                    <strong style={{ fontSize: ".85rem" }}>
+                      #{a.agent_id}
+                    </strong>
+                    <span
+                      className={`status-pill status-${a.status}`}
+                      style={{ fontSize: ".55rem" }}
+                    >
+                      {a.status}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: ".7rem", lineHeight: 1.3 }}>
+                    {shorten(a.brief, 120)}
+                  </div>
+                  <div style={{ display: "flex", gap: ".5rem" }}>
+                    <button onClick={() => void openExisting(a.agent_id)}>
+                      Open
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </div>
     );
   }
 
+  if (!activeAgent) return null;
+
   return (
     <div className="app-container">
       <header className="agent-header">
-        <h1>Agent #{state.agent.agentId}</h1>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "1rem",
+            flexWrap: "wrap",
+          }}
+        >
+          <button
+            onClick={() =>
+              setState((s) => ({ ...s, currentAgentId: undefined }))
+            }
+            style={{ background: "#334155" }}
+          >
+            ← Back
+          </button>
+          <h1 style={{ margin: 0 }}>Agent #{activeAgent.agentId}</h1>
+          <button
+            onClick={onStop}
+            disabled={activeAgent.status !== "running"}
+            style={{ background: "#b91c1c" }}
+          >
+            Stop
+          </button>
+        </div>
         <div className="status-line">
-          <span className={`status-pill status-${state.agent.status}`}>
-            {state.agent.status}
+          <span className={`status-pill status-${activeAgent.status}`}>
+            {activeAgent.status}
           </span>
-          <span>Cycles: {state.agent.cycleCount}</span>
-          {state.agent.activeIntentionId && (
+          <span>Cycles: {activeAgent.cycleCount}</span>
+          {activeAgent.activeIntentionId && (
             <span>
               Active intention:{" "}
               {shorten(
-                state.agent.intentions.find(
-                  (i) => i.id === state.agent!.activeIntentionId
+                activeAgent.intentions.find(
+                  (i) => i.id === activeAgent.activeIntentionId
                 )?.text || ""
               )}
             </span>
@@ -112,20 +340,34 @@ export function App() {
         <div className="left-col">
           <section className="panel chat">
             <h2>Chat</h2>
-            <div className="messages">
-              {state.messages.map((m) => (
+            <div
+              className={`messages ${
+                autoScrollRef.current ? "autoscroll" : ""
+              }`}
+              ref={messagesContainerRef}
+            >
+              {activeMessages.map((m) => (
                 <div key={m.id} className={`msg sender-${m.sender}`}>
                   <span className="sender">{m.sender}</span>
                   <span className="content">{m.content}</span>
                 </div>
               ))}
+              <div ref={messagesEndRef} />
             </div>
             <ChatInput
               onSend={(content) =>
-                setState((s) => ({
-                  ...s,
-                  messages: [...s.messages, createUserMessage(content)],
-                }))
+                setState((s) => {
+                  if (!s.currentAgentId) return s;
+                  const id = s.currentAgentId;
+                  const msgs = s.messagesByAgent[id] || [];
+                  return {
+                    ...s,
+                    messagesByAgent: {
+                      ...s.messagesByAgent,
+                      [id]: [...msgs, createUserMessage(content)],
+                    },
+                  };
+                })
               }
             />
           </section>
@@ -134,7 +376,7 @@ export function App() {
           <section className="panel desires">
             <h2>Desires</h2>
             <ul>
-              {state.agent.desires.map((d) => (
+              {activeAgent.desires.map((d) => (
                 <li key={d.id} className={`desire desire-${d.status}`}>
                   {d.text} <em>({d.status.replace("_", " ")})</em>
                 </li>
@@ -144,7 +386,7 @@ export function App() {
           <section className="panel intentions">
             <h2>Intentions</h2>
             <ul>
-              {state.agent.intentions.map((it) => (
+              {activeAgent.intentions.map((it) => (
                 <li key={it.id} className={it.active ? "active" : ""}>
                   {it.text}
                 </li>
@@ -166,62 +408,85 @@ function createUserMessage(content: string): ChatMessage {
   };
 }
 
-function handleEvent(prev: LocalState, evt: AgentEvent): LocalState {
-  if (!prev.agent) return prev;
+function handleEvent(
+  prev: LocalState,
+  agentId: string,
+  evt: AgentEvent
+): LocalState {
+  const agent = prev.agents[agentId];
+  if (!agent) return prev; // unknown agent (might race with load)
+  let updatedAgent = agent;
   switch (evt.type) {
     case "cycle.started":
-      return { ...prev, agent: { ...prev.agent, cycleCount: evt.cycle } };
+      updatedAgent = { ...agent, cycleCount: evt.cycle };
+      break;
     case "cycle.completed":
-      return {
-        ...prev,
-        agent: { ...prev.agent, cycleCount: evt.cycle, lastProgressAt: evt.at },
+      updatedAgent = {
+        ...agent,
+        cycleCount: evt.cycle,
+        lastProgressAt: evt.at,
       };
+      break;
     case "desire.updated": {
-      const desires = prev.agent.desires.map((d) =>
+      const desires = agent.desires.map((d) =>
         d.id === evt.desire.id ? evt.desire : d
       );
-      return { ...prev, agent: { ...prev.agent, desires } };
+      updatedAgent = { ...agent, desires };
+      break;
     }
     case "intention.updated": {
-      const intentions = prev.agent.intentions.map((i) =>
+      const intentions = agent.intentions.map((i) =>
         i.id === evt.intention.id ? evt.intention : i
       );
+      updatedAgent = {
+        ...agent,
+        intentions,
+        activeIntentionId: evt.intention.active
+          ? evt.intention.id
+          : agent.activeIntentionId,
+      };
+      break;
+    }
+    case "agent.status":
+      updatedAgent = { ...agent, ...evt.state };
+      break;
+    case "chat.message": {
+      const msgs = prev.messagesByAgent[agentId] || [];
       return {
         ...prev,
-        agent: {
-          ...prev.agent,
-          intentions,
-          activeIntentionId: evt.intention.active
-            ? evt.intention.id
-            : prev.agent.activeIntentionId,
+        agents: { ...prev.agents, [agentId]: updatedAgent },
+        messagesByAgent: {
+          ...prev.messagesByAgent,
+          [agentId]: [...msgs, evt.message],
         },
       };
     }
-    case "chat.message":
-      return { ...prev, messages: [...prev.messages, evt.message] };
-    case "agent.status":
-      return { ...prev, agent: { ...prev.agent, ...evt.state } };
-    case "error":
+    case "error": {
+      const msgs = prev.messagesByAgent[agentId] || [];
       return {
         ...prev,
-        messages: [
-          ...prev.messages,
-          {
-            id: crypto.randomUUID(),
-            at: evt.at,
-            sender: "error",
-            content: evt.error,
-          },
-        ],
+        messagesByAgent: {
+          ...prev.messagesByAgent,
+          [agentId]: [
+            ...msgs,
+            {
+              id: crypto.randomUUID(),
+              at: evt.at,
+              sender: "error",
+              content: evt.error,
+            },
+          ],
+        },
       };
+    }
     default:
       return prev;
   }
+  return { ...prev, agents: { ...prev.agents, [agentId]: updatedAgent } };
 }
 
 function shorten(text: string, max = 60) {
-  if (text.length <= max) return text;
-  return text.slice(0, max - 1) + "…";
+  return text.length <= max ? text : text.slice(0, max - 1) + "…";
 }
 
 function ChatInput({ onSend }: { onSend: (content: string) => void }) {

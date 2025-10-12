@@ -1,12 +1,12 @@
 body { font-family: system-ui, Arial, sans-serif; margin: 0; background:#0f1115; color:#f2f5f9; height:100vh; display:flex; flex-direction:column; }
-.app-container { flex:1; display:flex; flex-direction:column; max-width: 1400px; margin: 0 auto; padding: 0 1.25rem 1.25rem; min-height:0; }
+.app-container { flex:1; display:flex; flex-direction:column; max-width: 1400px; margin: 1rem auto; padding: 0 1.25rem 1.25rem; min-height:0; }
 textarea { width:100%; font-family:inherit; background:#1b1f27; color:#f2f5f9; border:1px solid #2d3341; border-radius:6px; padding:.75rem; }
 button { background:#2563eb; color:#fff; border:none; padding:.6rem 1rem; border-radius:6px; cursor:pointer; font-weight:600; }
 button:disabled { opacity:.5; cursor:not-allowed; }
 .actions { margin-top:.75rem; }
 .error { color:#f87171; }
 
-.agent-header { display:flex; flex-direction:column; gap:.35rem; margin-bottom:1rem; }
+.agent-header { display:flex; flex-direction:column; gap:.35rem; margin-bottom:1rem;}
 .status-line { display:flex; gap:1rem; flex-wrap:wrap; font-size:.85rem; color:#cbd5e1; }
 .status-pill { padding:.25rem .6rem; border-radius:999px; background:#1e293b; text-transform:uppercase; letter-spacing:.05em; font-size:.65rem; }
 .status-running { background:#166534; }
@@ -16,7 +16,7 @@ button:disabled { opacity:.5; cursor:not-allowed; }
 
 /* New layout: left chat column (flex-grow), right sidebar (25% width) stacking desires + intentions */
 .layout { flex:1; display:flex; gap:1rem; min-height:0; }
-.left-col { flex:1 1 auto; display:flex; flex-direction:column; min-width:0; }
+.left-col { flex:1 1 auto; display:flex; flex-direction:column; min-width:0; min-height:0; }
 .right-col { width:25%; max-width:380px; display:flex; flex-direction:column; gap:1rem; }
 .panel { background:#1b1f27; border:1px solid #2d3341; border-radius:8px; padding:.75rem .9rem; display:flex; flex-direction:column; min-height:160px; }
 .panel h2 { margin:.1rem 0 .6rem; font-size:1rem; }
@@ -27,8 +27,12 @@ button:disabled { opacity:.5; cursor:not-allowed; }
 .intentions li { background:#273040; padding:.4rem .5rem; border-radius:4px; opacity:.7; }
 .intentions li.active { opacity:1; border-left:4px solid #2563eb; }
 
-.chat { flex:1 1 auto; display:flex; flex-direction:column; min-height:0; }
-.messages { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:.5rem; font-size:.75rem; background:#12151b; padding:.6rem; border-radius:6px; border:1px solid #2d3341; min-height:0; }
+.chat { flex:1 1 0; display:flex; flex-direction:column; min-height:500rem; }
+/* Ensure chat panel (with both panel + chat classes) stretches and reserves vertical space */
+.panel.chat { flex:1 1 0; min-height:380px; /* guarantees a stable viewing area even with few messages */ }
+.messages { flex:1 1 0; overflow-y:auto; display:flex; flex-direction:column; gap:.5rem; font-size:.75rem; background:#12151b; padding:.6rem; border-radius:6px; border:1px solid #2d3341; min-height:0; }
+/* Allow messages container to keep last message pinned when autoscroll class present */
+.messages.autoscroll { scroll-behavior:smooth; }
 .msg { display:flex; flex-direction:column; gap:.15rem; padding:.4rem .5rem; background:#1f242d; border-radius:4px; }
 .msg .sender { text-transform:uppercase; font-size:.55rem; letter-spacing:.08em; color:#94a3b8; }
 .sender-user { background:#1f242d; }

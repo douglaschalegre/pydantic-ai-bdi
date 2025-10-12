@@ -59,6 +59,24 @@ async function startSimulationLoop(agentId: string) {
   }
 }
 
+export function mockStopAgent(agentId: string) {
+  const a = agents[agentId];
+  if (!a) return;
+  a.status = 'stopped';
+  emit(agentId, { type: 'agent.status', at: new Date().toISOString(), state: { status: 'stopped', cycleCount: a.cycleCount, lastProgressAt: new Date().toISOString(), activeIntentionId: undefined } });
+  emit(agentId, { type: 'chat.message', at: new Date().toISOString(), message: { id: randomId(), at: new Date().toISOString(), sender: 'system', content: 'Agent stopped (mock).' } });
+}
+
+export function mockListAgents() {
+  return Object.values(agents).map(a => ({
+    agent_id: a.agentId,
+    status: a.status,
+    cycle_count: a.cycleCount,
+    created_at: a.createdAt,
+    brief: a.desires[0]?.text || ''
+  }));
+}
+
 function maybeAdvanceDesires(a: AgentState, agentId: string) {
   const pending = a.desires.find(d => d.status === 'pending');
   if (pending && Math.random() < 0.4) {
