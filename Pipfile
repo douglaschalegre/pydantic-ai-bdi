@@ -6,6 +6,8 @@ name = "pypi"
 [packages]
 pydantic-ai = "*"
 chardet = "*"
+fastapi = "*"
+uvicorn = "*"
 
 [dev-packages]
 
