@@ -214,7 +214,9 @@ class BDI(Agent, Generic[T]):
                     )
 
                 final_intention = Intention(
-                    desire_id=hl_intention.desire_id, steps=detailed_steps
+                    desire_id=hl_intention.desire_id,
+                    description=hl_intention.description,
+                    steps=detailed_steps,
                 )
                 final_intentions.append(final_intention)
 
