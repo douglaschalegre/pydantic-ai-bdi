@@ -12,15 +12,14 @@ Action: Clicks a button like "Start Agent".
 
 ---
 ## 2. Frontend Sends a Request to Server
-The browser packages the user’s text (plus optional simple settings like priority or allow-human-help) into a JSON request.
+The browser packages the user’s text into a JSON request.
 
-Example (conceptual):
+Example:
 {
-   "goal": "Summarize repo changes and draft a release note",
-   "options": { "hitl": true }
+   "brief": "Summarize repo changes and draft a release note",
 }
 
-The request goes to an API endpoint on the server (e.g. /api/agents or /api/desires).
+The request goes to an API endpoint on the server (e.g. POST /api/agents).
 
 ---
 ## 3. Server Validates & Hands Off to BDI Core
