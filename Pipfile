@@ -13,3 +13,7 @@ uvicorn = "*"
 
 [requires]
 python_version = "3.10"
+
+[scripts]
+# Development server for FastAPI BDI API
+start = "uvicorn server.app:app --reload --port 8000"
