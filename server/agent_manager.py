@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Any
 from bdi import BDI
 from bdi.schemas import Intention, IntentionStep
-from pydantic_ai.models.openai import OpenAIModel
-from pydantic_ai.providers.openai import OpenAIProvider
+from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.providers.ollama import OllamaProvider
 import os
 
 
@@ -202,10 +202,10 @@ class AgentManager:
         self.agents: Dict[str, ManagedAgent] = {}
         self._loop = asyncio.get_event_loop()
 
-    def _create_model(self) -> OpenAIModel:
+    def _create_model(self) -> OpenAIChatModel:
         # Minimal placeholder; expects OPENAI_API_KEY
-        return OpenAIModel(
-            "gpt-4o", provider=OpenAIProvider(api_key=os.getenv("OPENAI_API_KEY"))
+        return OpenAIChatModel(
+            "gemma3:1b", provider=OllamaProvider(base_url=os.getenv("OLLAMA_BASE_URL"))
         )
 
     async def create_agent(self, brief: str) -> ManagedAgent:
