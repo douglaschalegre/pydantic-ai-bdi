@@ -1,14 +1,14 @@
 import os
 import asyncio
 from pydantic_ai.mcp import MCPServerStdio
-from pydantic_ai.models.openai import OpenAIModel
+from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 from bdi import BDI
 from dotenv import load_dotenv
 
 load_dotenv()
 
-model = OpenAIModel(
+model = OpenAIChatModel(
     "gpt-4o",
     provider=OpenAIProvider(
         api_key=os.getenv("OPENAI_API_KEY"),
