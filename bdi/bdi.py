@@ -8,7 +8,7 @@ from typing import (
     Literal,
 )
 from collections import deque
-from pydantic_ai import Agent
+from pydantic_ai import Agent, NativeOutput
 from pydantic_ai.agent import AgentRunResult
 from helper.util import bcolors
 from bdi.schemas import (
@@ -138,7 +138,7 @@ class BDI(Agent, Generic[T]):
         """
         try:
             stage1_result = await self.run(
-                prompt_stage1, output_type=HighLevelIntentionList
+                prompt_stage1, output_type=NativeOutput(HighLevelIntentionList)
             )
             if (
                 not stage1_result
@@ -195,7 +195,7 @@ class BDI(Agent, Generic[T]):
             """
             try:
                 stage2_result = await self.run(
-                    prompt_stage2, output_type=DetailedStepList
+                    prompt_stage2, output_type=NativeOutput(DetailedStepList)
                 )
                 if (
                     not stage2_result
@@ -275,7 +275,9 @@ class BDI(Agent, Generic[T]):
         Respond with a boolean value: True for success, False for failure.
         """
         try:
-            assessment_result = await self.run(assessment_prompt, output_type=bool)
+            assessment_result = await self.run(
+                assessment_prompt, output_type=NativeOutput(bool)
+            )
             if assessment_result and assessment_result.output:
                 if self.verbose:
                     print(
@@ -367,7 +369,7 @@ class BDI(Agent, Generic[T]):
                     f"{bcolors.SYSTEM}  Asking LLM to assess plan validity...{bcolors.ENDC}"
                 )
             reconsider_result = await self.run(
-                reconsider_prompt, output_type=ReconsiderResult
+                reconsider_prompt, output_type=NativeOutput(ReconsiderResult)
             )
 
             if (
@@ -852,7 +854,9 @@ class BDI(Agent, Generic[T]):
                     f"{bcolors.SYSTEM}  Sending user guidance to LLM for interpretation...{bcolors.ENDC}"
                 )
 
-            llm_response = await self.run(prompt, output_type=PlanManipulationDirective)
+            llm_response = await self.run(
+                prompt, output_type=NativeOutput(PlanManipulationDirective)
+            )
 
             if llm_response and llm_response.output:
                 if self.verbose:
