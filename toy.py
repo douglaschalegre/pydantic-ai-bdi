@@ -1,20 +1,22 @@
 import os
 import asyncio
 from pydantic_ai.mcp import MCPServerStdio
-from pydantic_ai.models.openai import OpenAIChatModel
-from pydantic_ai.providers.openai import OpenAIProvider
+
+# from pydantic_ai.models.openai import OpenAIChatModel
+# from pydantic_ai.providers.ollama import OllamaProvider
+from pydantic_ai.models.groq import GroqModel
+from pydantic_ai.providers.groq import GroqProvider
 from bdi import BDI
 from dotenv import load_dotenv
 
 load_dotenv()
 
-model = OpenAIChatModel(
-    "gpt-4o",
-    provider=OpenAIProvider(
-        api_key=os.getenv("OPENAI_API_KEY"),
-    ),
+# model = OpenAIChatModel(
+#     "gemma3:1b", provider=OllamaProvider(base_url=os.getenv("OLLAMA_BASE_URL"))
+# )
+model = GroqModel(
+    "llama-3.1-8b-instant", provider=GroqProvider(api_key=os.getenv("PROVIDER_API_KEY"))
 )
-
 git_server = MCPServerStdio(
     "uvx", args=["mcp-server-git"], tool_prefix="git", timeout=60
 )

@@ -111,7 +111,7 @@ pipenv install
 # example.py
 import asyncio
 from pydantic_ai.mcp import MCPServerStdio
-from pydantic_ai.models.openai import OpenAIModel
+from pydantic_ai.models.ollama import OllamaModel
 from bdi import BDI
 
 # Create an MCP server for git
@@ -121,7 +121,7 @@ git_server = MCPServerStdio(
 
 # Create a BDI agent
 agent = BDI(
-    model=OpenAIModel("gpt-4o"),
+    model=OllamaModel("gemma3:1b", provider=OllamaProvider(base_url=os.getenv("OLLAMA_BASE_URL"))),
     desires=[
         "I need a report of the commit history of the pydantic-ai repository"
     ],
