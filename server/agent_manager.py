@@ -3,7 +3,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Any
 from bdi import BDI
-from bdi.schemas import Intention, IntentionStep
+from .agents import brief_parser
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.ollama import OllamaProvider
 import os
@@ -203,43 +203,26 @@ class AgentManager:
         self._loop = asyncio.get_event_loop()
 
     def _create_model(self) -> OpenAIChatModel:
-        # Minimal placeholder; expects OPENAI_API_KEY
         return OpenAIChatModel(
             "gemma3:1b", provider=OllamaProvider(base_url=os.getenv("OLLAMA_BASE_URL"))
         )
 
     async def create_agent(self, brief: str) -> ManagedAgent:
         agent_id = f"a_{uuid.uuid4().hex[:8]}"
-        # TODO: Replace with NL->desires extraction; placeholder single desire/intention
+        print(f"Extracting desires and intentions from brief: {brief}")
+        desires, intentions = await brief_parser.extract_desires_intentions(brief)
+        print(f"Extracted desires: {desires}")
+        print(f"Extracted intentions: {intentions}")
         model = self._create_model()
         bdi = BDI(
             model,
-            desires=[brief],
-            intentions=["Initial analysis"],
+            desires=desires,
+            intentions=intentions,
             verbose=False,
             enable_human_in_the_loop=False,
         )
-        # Fallback placeholder intentions when no OpenAI key (so UI isn't empty)
-        if not os.getenv("OPENAI_API_KEY") and not bdi.intentions:
-            for desire in bdi.desires:
-                try:
-                    bdi.intentions.append(
-                        Intention(
-                            desire_id=desire.id,
-                            description=f"Fulfill desire: {desire.description}",
-                            steps=[
-                                IntentionStep(
-                                    description="Placeholder step until LLM intention generation is enabled",
-                                    is_tool_call=False,
-                                )
-                            ],
-                        )
-                    )
-                except Exception:
-                    # Silent fallback; if construction fails we just proceed without intentions
-                    pass
         managed = ManagedAgent(agent_id, bdi, brief=brief)
-        managed.task = self._loop.create_task(managed.run())
+        # managed.task = self._loop.create_task(managed.run())
         self.agents[agent_id] = managed
         return managed
 
