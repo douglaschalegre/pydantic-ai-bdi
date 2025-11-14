@@ -47,7 +47,6 @@ class BDI(Agent, Generic[T]):
         self.log_file_path = log_file_path
         self.cycle_count = 0
 
-        # Initialize log file if path is provided
         if self.log_file_path:
             self._initialize_log_file()
 
@@ -86,7 +85,6 @@ class BDI(Agent, Generic[T]):
             )
             self.log_file_path = None
 
-    # Expose module functions as methods for backward compatibility and convenience
     async def generate_intentions_from_desires(self) -> None:
         """Generate intentions from desires using two-stage LLM process."""
         await generate_intentions_from_desires(self)

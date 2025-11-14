@@ -89,9 +89,7 @@ async def analyze_step_outcome_and_update_beliefs(
     # --- Belief Extraction ---
     # Extract beliefs from the step result regardless of success/failure
     if agent.verbose:
-        print(
-            f"{bcolors.SYSTEM}  Extracting beliefs from step result...{bcolors.ENDC}"
-        )
+        print(f"{bcolors.SYSTEM}  Extracting beliefs from step result...{bcolors.ENDC}")
 
     belief_extraction_prompt = f"""
     Analyze the following step execution and extract any factual information that should be recorded as beliefs.
@@ -197,7 +195,10 @@ async def execute_intentions(agent: "BDI") -> Dict:
             for desire in agent.desires:
                 if desire.id == intention.desire_id:
                     if desire.status != DesireStatus.ACHIEVED:
-                        desire.update_status(DesireStatus.ACHIEVED, lambda **kwargs: log_states(agent, **kwargs))
+                        desire.update_status(
+                            DesireStatus.ACHIEVED,
+                            lambda **kwargs: log_states(agent, **kwargs),
+                        )
                     break
             agent.intentions.popleft()
             log_states(agent, ["intentions", "desires"])
@@ -296,7 +297,9 @@ Consider the current beliefs when executing this task.
                 result_md += f"*Completed: {datetime.now().isoformat()}*"
                 write_to_log_file(agent, result_md)
 
-            intention.increment_current_step(lambda **kwargs: log_states(agent, **kwargs))
+            intention.increment_current_step(
+                lambda **kwargs: log_states(agent, **kwargs)
+            )
 
             if intention.current_step >= len(intention.steps):
                 print(
@@ -304,7 +307,10 @@ Consider the current beliefs when executing this task.
                 )
                 for desire in agent.desires:
                     if desire.id == intention.desire_id:
-                        desire.update_status(DesireStatus.ACHIEVED, lambda **kwargs: log_states(agent, **kwargs))
+                        desire.update_status(
+                            DesireStatus.ACHIEVED,
+                            lambda **kwargs: log_states(agent, **kwargs),
+                        )
                         break
                 if agent.intentions and agent.intentions[0] == intention:
                     agent.intentions.popleft()
@@ -389,7 +395,9 @@ Consider the current beliefs when executing this task.
 
         for desire in agent.desires:
             if desire.id == intention.desire_id:
-                desire.update_status(DesireStatus.FAILED, lambda **kwargs: log_states(agent, **kwargs))
+                desire.update_status(
+                    DesireStatus.FAILED, lambda **kwargs: log_states(agent, **kwargs)
+                )
                 break
         if agent.intentions and agent.intentions[0] == intention:
             agent.intentions.popleft()

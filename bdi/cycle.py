@@ -51,7 +51,6 @@ async def bdi_cycle(agent: "BDI") -> None:
     # 1. Belief Update (Triggered by Action Outcomes)
     # Beliefs are updated within analyze_step_outcome_and_update_beliefs
     # after an action is taken in execute_intentions.
-    # We still print current beliefs at the start.
     if agent.verbose:
         print(f"{bcolors.BELIEF}Current Beliefs:{bcolors.ENDC}")
         log_states(agent, ["beliefs"])
@@ -128,7 +127,7 @@ async def bdi_cycle(agent: "BDI") -> None:
     if agent.log_file_path:
         write_to_log_file(
             agent,
-            f"**Cycle {agent.cycle_count} End**\n*Timestamp: {datetime.now().isoformat()}*\n\n---"
+            f"**Cycle {agent.cycle_count} End**\n*Timestamp: {datetime.now().isoformat()}*\n\n---",
         )
 
 
