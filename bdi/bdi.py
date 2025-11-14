@@ -22,6 +22,7 @@ from bdi.schemas import (
     DetailedStepList,
     ReconsiderResult,
     PlanManipulationDirective,
+    BeliefExtractionResult,
 )
 from datetime import datetime
 import traceback
@@ -47,6 +48,7 @@ class BDI(Agent, Generic[T]):
         intentions: List[str] = None,
         verbose: bool = False,
         enable_human_in_the_loop: bool = False,
+        log_file_path: Optional[str] = None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -56,6 +58,12 @@ class BDI(Agent, Generic[T]):
         self.initial_intention_guidance: List[str] = intentions or []
         self.verbose = verbose
         self.enable_human_in_the_loop = enable_human_in_the_loop
+        self.log_file_path = log_file_path
+        self.cycle_count = 0
+
+        # Initialize log file if path is provided
+        if self.log_file_path:
+            self._initialize_log_file()
 
         self._initialize_string_desires(desires)
 
@@ -70,6 +78,49 @@ class BDI(Agent, Generic[T]):
             )
             self.desires.append(desire)
         self.log_states(["desires"])
+
+    def _initialize_log_file(self) -> None:
+        """Initialize the markdown log file with header information."""
+        try:
+            with open(self.log_file_path, "w", encoding="utf-8") as f:
+                f.write("# BDI Agent Execution Log\n\n")
+                f.write(f"**Started:** {datetime.now().isoformat()}\n\n")
+                f.write("---\n\n")
+            if self.verbose:
+                print(
+                    f"{bcolors.SYSTEM}Log file initialized at: {self.log_file_path}{bcolors.ENDC}"
+                )
+        except Exception as e:
+            print(
+                f"{bcolors.FAIL}Failed to initialize log file at {self.log_file_path}: {e}{bcolors.ENDC}"
+            )
+            self.log_file_path = None
+
+    def _write_to_log_file(self, content: str, section_title: str = None) -> None:
+        """Write content to the markdown log file."""
+        if not self.log_file_path:
+            return
+
+        try:
+            with open(self.log_file_path, "a", encoding="utf-8") as f:
+                if section_title:
+                    f.write(f"## {section_title}\n\n")
+                f.write(content)
+                f.write("\n\n")
+        except Exception as e:
+            print(f"{bcolors.FAIL}Failed to write to log file: {e}{bcolors.ENDC}")
+
+    def _format_beliefs_for_context(self) -> str:
+        """Format current beliefs for inclusion in LLM prompts."""
+        if not self.beliefs.beliefs:
+            return "No beliefs recorded yet."
+
+        beliefs_lines = []
+        for name, belief in self.beliefs.beliefs.items():
+            beliefs_lines.append(
+                f"- {name}: {belief.value} (Certainty: {belief.certainty:.2f})"
+            )
+        return "\n".join(beliefs_lines)
 
     async def generate_intentions_from_desires(self) -> None:
         """Convert desires into detailed, actionable intentions using a two-stage LLM process."""
@@ -185,6 +236,12 @@ class BDI(Agent, Generic[T]):
             Current Beliefs:
             {beliefs_text}
 
+            IMPORTANT: When planning steps, actively use current beliefs:
+            - Skip discovery steps if beliefs already contain the needed information
+            - Use belief values to set initial tool parameters (e.g., if belief contains a path, use it)
+            - Account for constraints or limitations revealed in beliefs (e.g., if a belief indicates something failed, don't retry the same way)
+            - Build upon information already known rather than re-discovering it
+
             Available Tools:
             (The underlying Pydantic AI agent will provide the available tools, including those from MCP, to the LLM.)
 
@@ -274,6 +331,7 @@ class BDI(Agent, Generic[T]):
         Consider the context of previous steps and their outcomes in your assessment.
         Respond with a boolean value: True for success, False for failure.
         """
+        step_success = False
         try:
             assessment_result = await self.run(assessment_prompt, output_type=bool)
             if assessment_result and assessment_result.output:
@@ -281,7 +339,7 @@ class BDI(Agent, Generic[T]):
                     print(
                         f"{bcolors.SYSTEM}  LLM Assessment: Step SUCCEEDED.{bcolors.ENDC}"
                     )
-                return True
+                step_success = True
             else:
                 failure_reason = (
                     assessment_result.output
@@ -291,12 +349,95 @@ class BDI(Agent, Generic[T]):
                 print(
                     f"{bcolors.WARNING}  LLM Assessment: Step FAILED. Reason: {failure_reason}{bcolors.ENDC}"
                 )
-                return False
+                step_success = False
         except Exception as assess_e:
             print(
                 f"{bcolors.FAIL}  Error during LLM success assessment: {assess_e}{bcolors.ENDC}"
             )
-            return False
+            step_success = False
+
+        # --- Belief Extraction (NEW) ---
+        # Extract beliefs from the step result regardless of success/failure
+        if self.verbose:
+            print(
+                f"{bcolors.SYSTEM}  Extracting beliefs from step result...{bcolors.ENDC}"
+            )
+
+        belief_extraction_prompt = f"""
+        Analyze the following step execution and extract any factual information that should be recorded as beliefs.
+
+        Step Objective: "{step.description}"
+        Step Result: "{result.output}"
+        Step Success: {step_success}
+
+        Extract beliefs about:
+        - Factual information discovered (e.g., file paths, status values, API responses)
+        - Error causes or constraints (e.g., "path does not exist", "network unavailable")
+        - State changes or conditions revealed (e.g., "repository is empty", "file contains X")
+        - Tool availability or limitations learned (e.g., "tool requires parameter Y")
+
+        For FAILED steps, focus on extracting information about WHY it failed - these constraints are valuable.
+        For SUCCESSFUL steps, extract the positive information discovered.
+
+        Return a list of beliefs with concise names and clear values. Set certainty based on how definitive the information is.
+        If no meaningful beliefs can be extracted, return an empty list with an explanation.
+        """
+
+        try:
+            extraction_result = await self.run(
+                belief_extraction_prompt, output_type=BeliefExtractionResult
+            )
+
+            if (
+                extraction_result
+                and extraction_result.output
+                and extraction_result.output.beliefs
+            ):
+                extracted_beliefs = extraction_result.output.beliefs
+                print(
+                    f"{bcolors.BELIEF}  Extracted {len(extracted_beliefs)} belief(s) from step result.{bcolors.ENDC}"
+                )
+
+                # Update the belief set
+                for belief in extracted_beliefs:
+                    self.beliefs.update(
+                        name=belief.name,
+                        value=belief.value,
+                        source=f"step_{intention.current_step + 1}_{step.description[:30]}",
+                        certainty=belief.certainty,
+                    )
+                    if self.verbose:
+                        print(
+                            f"{bcolors.BELIEF}    + {belief.name}: {belief.value} (Certainty: {belief.certainty:.2f}){bcolors.ENDC}"
+                        )
+
+                # Log to markdown file
+                if self.log_file_path:
+                    beliefs_md = f"🔍 **Beliefs Extracted:**\n"
+                    beliefs_md += f"*{extraction_result.output.explanation}*\n\n"
+                    for belief in extracted_beliefs:
+                        beliefs_md += f"- **{belief.name}**: {belief.value} (Certainty: {belief.certainty:.2f})\n"
+                    self._write_to_log_file(beliefs_md)
+
+            else:
+                if self.verbose:
+                    explanation = (
+                        extraction_result.output.explanation
+                        if extraction_result and extraction_result.output
+                        else "No explanation provided"
+                    )
+                    print(
+                        f"{bcolors.SYSTEM}  No beliefs extracted. {explanation}{bcolors.ENDC}"
+                    )
+
+        except Exception as extract_e:
+            print(
+                f"{bcolors.FAIL}  Error during belief extraction: {extract_e}{bcolors.ENDC}"
+            )
+            if self.verbose:
+                traceback.print_exc()
+
+        return step_success
 
     async def _reconsider_current_intention(self) -> None:
         """
@@ -411,15 +552,20 @@ class BDI(Agent, Generic[T]):
                 f"{bcolors.FAIL}  Error during intention reconsideration LLM call: {recon_e}{bcolors.ENDC}"
             )
 
-    async def execute_intentions(self) -> None:
+    async def execute_intentions(self) -> dict:
         """
         Executes one step of the current intention, analyzes the outcome,
         updates beliefs, and handles success or failure.
         Does NOT proceed to the next step if the current step fails analysis.
+
+        Returns:
+            Dictionary with keys:
+            - 'hitl_modified_plan': bool - whether HITL modified the plan this execution
+            - 'hitl_updated_beliefs': bool - whether HITL updated beliefs
         """
         if not self.intentions:
             print(f"{bcolors.SYSTEM}No intentions to execute.{bcolors.ENDC}")
-            return
+            return {"hitl_modified_plan": False, "hitl_updated_beliefs": False}
 
         intention = self.intentions[0]
 
@@ -435,23 +581,47 @@ class BDI(Agent, Generic[T]):
                         break
                 self.intentions.popleft()
                 self.log_states(["intentions", "desires"])
-            return
+            return {"hitl_modified_plan": False, "hitl_updated_beliefs": False}
 
         current_step = intention.steps[intention.current_step]
         print(
             f"{bcolors.INTENTION}Executing step {intention.current_step + 1}/{len(intention.steps)} for desire '{intention.desire_id}': {current_step.description}{bcolors.ENDC}"
         )
 
+        # Log step execution start
+        if self.log_file_path:
+            step_md = f"#### Step {intention.current_step + 1}/{len(intention.steps)}\n"
+            step_md += f"**Desire:** {intention.desire_id}\n"
+            step_md += f"**Description:** {current_step.description}\n"
+            if current_step.is_tool_call:
+                step_md += f"**Tool:** {current_step.tool_name}\n"
+                step_md += f"**Parameters:** {json.dumps(current_step.tool_params)}\n"
+            step_md += f"*Started: {datetime.now().isoformat()}*"
+            self._write_to_log_file(step_md)
+
         step_result: Optional[AgentRunResult] = None
         step_succeeded: bool = False
 
         try:
+            # Get current beliefs to provide context for execution
+            beliefs_context = self._format_beliefs_for_context()
+
             if current_step.is_tool_call and current_step.tool_name:
                 if self.verbose:
                     print(
                         f"{bcolors.SYSTEM}  Attempting tool call via self.run: {current_step.tool_name}({current_step.tool_params}){bcolors.ENDC}"
                     )
-                tool_prompt = f"Execute the tool '{current_step.tool_name}' with the following parameters: {current_step.tool_params or {}}. Perform this action now."
+
+                # Enhanced tool call prompt with belief context
+                tool_prompt = f"""
+Current known information (beliefs):
+{beliefs_context}
+
+Execute the tool '{current_step.tool_name}' with the suggested parameters: {current_step.tool_params or {}}
+
+You may adjust parameters if current beliefs suggest better values or if conditions have changed.
+Perform this action now.
+"""
                 step_result = await self.run(tool_prompt)
                 print(
                     f"{bcolors.SYSTEM}  Tool '{current_step.tool_name}' result: {step_result.output}{bcolors.ENDC}"
@@ -461,7 +631,17 @@ class BDI(Agent, Generic[T]):
                     print(
                         f"{bcolors.SYSTEM}  Executing descriptive step via self.run: {current_step.description}{bcolors.ENDC}"
                     )
-                step_result = await self.run(current_step.description)
+
+                # Enhanced descriptive step prompt with belief context
+                enhanced_prompt = f"""
+Current known information (beliefs):
+{beliefs_context}
+
+Task: {current_step.description}
+
+Consider the current beliefs when executing this task.
+"""
+                step_result = await self.run(enhanced_prompt)
                 if self.verbose:
                     print(
                         f"{bcolors.SYSTEM}  Step result: {step_result.output}{bcolors.ENDC}"
@@ -486,6 +666,16 @@ class BDI(Agent, Generic[T]):
                 print(
                     f"{bcolors.INTENTION}  Step {intention.current_step + 1} successful.{bcolors.ENDC}"
                 )
+
+                # Log step success
+                if self.log_file_path:
+                    result_md = f"**Result:** ✅ Success\n"
+                    result_md += (
+                        f"**Output:** {step_result.output if step_result else 'N/A'}\n"
+                    )
+                    result_md += f"*Completed: {datetime.now().isoformat()}*"
+                    self._write_to_log_file(result_md)
+
                 intention.increment_current_step(self.log_states)
 
                 if intention.current_step >= len(intention.steps):
@@ -504,10 +694,23 @@ class BDI(Agent, Generic[T]):
                     f"{bcolors.WARNING}  Step {intention.current_step + 1} failed analysis. Intention progress paused. Reconsideration pending.{bcolors.ENDC}"
                 )
 
+                # Log step failure
+                if self.log_file_path:
+                    result_md = f"**Result:** ❌ Failed\n"
+                    result_md += (
+                        f"**Output:** {step_result.output if step_result else 'N/A'}\n"
+                    )
+                    result_md += f"*Completed: {datetime.now().isoformat()}*"
+                    self._write_to_log_file(result_md)
+
                 hitl_success = False
+                hitl_updated_beliefs = False
                 if self.enable_human_in_the_loop:
                     try:
-                        hitl_success = await self._human_in_the_loop_intervention(
+                        (
+                            hitl_success,
+                            hitl_updated_beliefs,
+                        ) = await self._human_in_the_loop_intervention(
                             intention, current_step, step_result
                         )
                     except Exception as hitl_e:
@@ -521,6 +724,11 @@ class BDI(Agent, Generic[T]):
                     print(
                         f"{bcolors.SYSTEM}  HITL intervention successful. Step will be retried in next cycle.{bcolors.ENDC}"
                     )
+                    # Return HITL info to skip reconsideration in bdi_cycle
+                    return {
+                        "hitl_modified_plan": True,
+                        "hitl_updated_beliefs": hitl_updated_beliefs,
+                    }
                 else:
                     self.log_states(["beliefs"])
 
@@ -536,6 +744,14 @@ class BDI(Agent, Generic[T]):
             print(
                 f"{bcolors.FAIL}------------------------------------------------------------{bcolors.ENDC}"
             )
+
+            # Log exception
+            if self.log_file_path:
+                error_md = f"**Result:** 🔥 Exception\n"
+                error_md += f"**Error:** {str(e)}\n"
+                error_md += f"**Traceback:**\n```\n{traceback.format_exc()}\n```\n"
+                error_md += f"*Timestamp: {datetime.now().isoformat()}*"
+                self._write_to_log_file(error_md)
 
             beliefs_updated = {
                 name: {"value": b.value, "source": b.source, "certainty": b.certainty}
@@ -556,8 +772,20 @@ class BDI(Agent, Generic[T]):
                 self.intentions.popleft()
             self.log_states(["intentions", "desires"])
 
+        # Normal completion (no HITL intervention)
+        return {"hitl_modified_plan": False, "hitl_updated_beliefs": False}
+
     async def bdi_cycle(self) -> None:
         """Run one BDI reasoning cycle including reconsideration."""
+        self.cycle_count += 1
+
+        # Log cycle start
+        if self.log_file_path:
+            self._write_to_log_file(
+                f"**Cycle {self.cycle_count} Start**\n*Timestamp: {datetime.now().isoformat()}*",
+                section_title=f"BDI Cycle {self.cycle_count}",
+            )
+
         self.log_states(
             types=["beliefs", "desires", "intentions"],
             message="States before starting BDI cycle",
@@ -600,14 +828,24 @@ class BDI(Agent, Generic[T]):
                 )
 
         # 4. Intention Execution (One Step)
+        hitl_info = {"hitl_modified_plan": False, "hitl_updated_beliefs": False}
         if self.intentions:
-            await self.execute_intentions()
+            hitl_info = await self.execute_intentions()
         else:
             print(f"{bcolors.SYSTEM}No intentions to execute this cycle.{bcolors.ENDC}")
 
         # 5. Reconsideration (Plan Monitoring)
         # After executing a step (successfully or not), reconsider the current plan.
-        if self.intentions:  # Check if an intention still exists
+        # SKIP reconsideration if HITL just modified the plan (give it a chance to execute first)
+        if hitl_info.get("hitl_modified_plan", False):
+            print(
+                f"{bcolors.SYSTEM}  Skipping reconsideration: HITL just modified the plan. Will retry modified step in next cycle.{bcolors.ENDC}"
+            )
+            if hitl_info.get("hitl_updated_beliefs", False):
+                print(
+                    f"{bcolors.BELIEF}  Note: Beliefs were updated from HITL guidance and are now persisted.{bcolors.ENDC}"
+                )
+        elif self.intentions:  # Check if an intention still exists
             current_intention = self.intentions[0]
             # Only reconsider if the intention wasn't just completed/removed by execute_intentions
             if not current_intention.steps or current_intention.current_step < len(
@@ -629,6 +867,12 @@ class BDI(Agent, Generic[T]):
             message="States after BDI cycle",
         )
 
+        # Log cycle end
+        if self.log_file_path:
+            self._write_to_log_file(
+                f"**Cycle {self.cycle_count} End**\n*Timestamp: {datetime.now().isoformat()}*\n\n---"
+            )
+
     def log_states(
         self,
         types: list[Literal["beliefs", "desires", "intentions"]],
@@ -636,6 +880,13 @@ class BDI(Agent, Generic[T]):
     ):
         if message:
             print(f"{bcolors.SYSTEM}{message}{bcolors.ENDC}")
+
+        # Prepare markdown content for file logging
+        md_content = []
+        if message:
+            md_content.append(f"**{message}**\n")
+        md_content.append(f"*Timestamp: {datetime.now().isoformat()}*\n")
+
         if "beliefs" in types:
             if self.verbose:
                 belief_str = "\n".join(
@@ -651,6 +902,17 @@ class BDI(Agent, Generic[T]):
                 print(
                     f"{bcolors.BELIEF}Beliefs: {len(self.beliefs.beliefs)} items{bcolors.ENDC}"
                 )
+
+            # Add to markdown
+            md_content.append("### Beliefs\n")
+            if self.beliefs.beliefs:
+                for name, b in self.beliefs.beliefs.items():
+                    md_content.append(
+                        f"- **{name}**: {b.value} (Source: {b.source}, Certainty: {b.certainty:.2f}, Time: {datetime.fromtimestamp(b.timestamp).isoformat()})\n"
+                    )
+            else:
+                md_content.append("*(None)*\n")
+
         if "desires" in types:
             if self.verbose:
                 desire_str = "\n".join(
@@ -666,6 +928,17 @@ class BDI(Agent, Generic[T]):
                 print(
                     f"{bcolors.DESIRE}Desires: {len(self.desires)} items{bcolors.ENDC}"
                 )
+
+            # Add to markdown
+            md_content.append("### Desires\n")
+            if self.desires:
+                for d in self.desires:
+                    md_content.append(
+                        f"- **{d.id}**: {d.description} (Status: {d.status.value}, Priority: {d.priority})\n"
+                    )
+            else:
+                md_content.append("*(None)*\n")
+
         if "intentions" in types:
             if self.verbose:
                 intention_str = "\n".join(
@@ -681,6 +954,25 @@ class BDI(Agent, Generic[T]):
                 print(
                     f"{bcolors.INTENTION}Intentions: {len(self.intentions)} items{bcolors.ENDC}"
                 )
+
+            # Add to markdown
+            md_content.append("### Intentions\n")
+            if self.intentions:
+                for i in self.intentions:
+                    next_step = (
+                        i.steps[i.current_step].description
+                        if i.current_step < len(i.steps)
+                        else "(Completed)"
+                    )
+                    md_content.append(
+                        f"- **Desire '{i.desire_id}'**: Next → {next_step} (Step {i.current_step + 1}/{len(i.steps)})\n"
+                    )
+            else:
+                md_content.append("*(None)*\n")
+
+        # Write to log file if enabled
+        if self.log_file_path:
+            self._write_to_log_file("".join(md_content))
 
     def _build_failure_context(
         self,
@@ -838,12 +1130,27 @@ class BDI(Agent, Generic[T]):
         Instructions for you, the LLM:
         1. Analyze the user's guidance in the context of the failure.
         2. Determine the most appropriate 'manipulation_type' from the available literals in PlanManipulationDirective.
-        3. If the user suggests modifying the current step, populate 'current_step_modifications' with a dictionary of changes. For tool calls, this is often a new 'tool_params' dictionary. For descriptive steps, it might be a new 'description'.
-        4. If the user suggests new steps, populate 'new_steps_definition' with a list of dictionaries. Each dictionary must conform to the IntentionStep schema (fields: description, is_tool_call, tool_name, tool_params).
+
+        CRITICAL: Extract Factual Information to Beliefs
+        3. **ALWAYS populate 'beliefs_to_update' when the user provides factual information**, REGARDLESS of manipulation_type.
+           This is INDEPENDENT of plan modification. You can extract beliefs AND modify the plan in the same directive.
+           Examples of factual information to extract as beliefs:
+           * File paths (e.g., "the repo is at /path/to/repo" → belief: repo_path = "/path/to/repo")
+           * Status values (e.g., "the service is offline" → belief: service_status = "offline")
+           * Configuration values (e.g., "use port 8080" → belief: server_port = "8080")
+           * Constraints (e.g., "that API requires authentication" → belief: api_requires_auth = "true")
+           * Error causes (e.g., "path doesn't exist" → belief: path_invalid = "true")
+
+        Plan Manipulation:
+        4. If the user suggests modifying the current step, populate 'current_step_modifications' with a dictionary of changes. For tool calls, this is often a new 'tool_params' dictionary. For descriptive steps, it might be a new 'description'.
+        5. If the user suggests new steps, populate 'new_steps_definition' with a list of dictionaries. Each dictionary must conform to the IntentionStep schema (fields: description, is_tool_call, tool_name, tool_params).
            If generating tool calls, ensure 'tool_name' is valid from the available tools and 'tool_params' are appropriate.
-        5. If the user provides factual information to correct the agent's understanding, populate 'beliefs_to_update'. The key is the belief name, and the value is a dictionary for the Belief schema (e.g., {{"value": "new value", "source": "human_guidance", "certainty": 1.0}}).
-        6. Provide a concise 'user_guidance_summary' explaining your interpretation and chosen action.
-        7. If the user's guidance is unclear, a comment, or cannot be mapped to a specific plan manipulation, use 'COMMENT_NO_ACTION' and explain in the summary.
+
+        Summary:
+        6. Provide a concise 'user_guidance_summary' explaining your interpretation, chosen action, AND any beliefs extracted.
+        7. If the user's guidance is unclear, a comment, or cannot be mapped to a specific plan manipulation, use 'COMMENT_NO_ACTION' and explain in the summary (but still extract beliefs if factual information was provided).
+
+        REMEMBER: Belief extraction and plan manipulation are ORTHOGONAL. Even when choosing MODIFY_CURRENT_AND_RETRY or RETRY_CURRENT_AS_IS, if the user provides factual information, EXTRACT IT TO BELIEFS.
         """
 
         try:
@@ -956,17 +1263,60 @@ class BDI(Agent, Generic[T]):
         self,
         directive: PlanManipulationDirective,
         intention: Intention,
-    ) -> bool:
-        """Applies the plan manipulation based on the LLM-interpreted and user-confirmed guidance."""
+    ) -> tuple[bool, bool]:
+        """Applies the plan manipulation based on the LLM-interpreted and user-confirmed guidance.
+
+        Returns:
+            Tuple of (applied_successfully, beliefs_updated)
+        """
 
         idx = intention.current_step
         applied_successfully = False
+        beliefs_updated = False
 
         manip_type = directive.manipulation_type
         print(
             f"{bcolors.SYSTEM}  Applying user guidance: {manip_type} - {directive.user_guidance_summary}{bcolors.ENDC}"
         )
 
+        # FIRST: Extract and apply beliefs if user provided factual information
+        # This happens BEFORE and INDEPENDENT of plan manipulation
+        if directive.beliefs_to_update:
+            print(
+                f"{bcolors.BELIEF}  Extracting beliefs from HITL guidance...{bcolors.ENDC}"
+            )
+            for name, belief_data_dict in directive.beliefs_to_update.items():
+                belief_data_dict.setdefault("name", name)
+                belief_data_dict.setdefault("source", "human_guidance")
+                belief_data_dict.setdefault("certainty", 1.0)
+                belief_data_dict.setdefault("timestamp", datetime.now().timestamp())
+                try:
+                    self.beliefs.update(
+                        name=name,
+                        value=belief_data_dict["value"],
+                        source=belief_data_dict["source"],
+                        certainty=belief_data_dict["certainty"],
+                    )
+                    if self.verbose:
+                        print(
+                            f"{bcolors.BELIEF}    + {name}: {belief_data_dict['value']} (Source: human_guidance){bcolors.ENDC}"
+                        )
+                    beliefs_updated = True
+                except KeyError as e:
+                    print(
+                        f"{bcolors.FAIL}  Failed to update belief '{name}' due to missing data: {e}{bcolors.ENDC}"
+                    )
+                except Exception as e:
+                    print(
+                        f"{bcolors.FAIL}  Failed to update belief '{name}': {e}{bcolors.ENDC}"
+                    )
+
+            if beliefs_updated:
+                self.log_states(
+                    ["beliefs"], message="Beliefs updated from HITL guidance."
+                )
+
+        # THEN: Apply plan manipulation
         try:
             if manip_type == "RETRY_CURRENT_AS_IS":
                 applied_successfully = True
@@ -1072,33 +1422,8 @@ class BDI(Agent, Generic[T]):
                 applied_successfully = True
 
             elif manip_type == "UPDATE_BELIEFS_AND_RETRY":
-                if directive.beliefs_to_update:
-                    for name, belief_data_dict in directive.beliefs_to_update.items():
-                        belief_data_dict.setdefault("name", name)
-                        belief_data_dict.setdefault("source", "human_guidance")
-                        belief_data_dict.setdefault("certainty", 1.0)
-                        belief_data_dict.setdefault(
-                            "timestamp", datetime.now().timestamp()
-                        )
-                        try:
-                            self.beliefs.update(
-                                name=name,
-                                value=belief_data_dict["value"],
-                                source=belief_data_dict["source"],
-                                certainty=belief_data_dict["certainty"],
-                            )
-                        except KeyError as e:
-                            print(
-                                f"{bcolors.FAIL}  Failed to update belief '{name}' due to missing data: {e}{bcolors.ENDC}"
-                            )
-                        except Exception as e:
-                            print(
-                                f"{bcolors.FAIL}  Failed to update belief '{name}': {e}{bcolors.ENDC}"
-                            )
-                    self.log_states(
-                        ["beliefs"], message="Beliefs updated by user guidance."
-                    )
-                else:
+                # Beliefs already updated above, just retry the step
+                if not directive.beliefs_to_update:
                     print(
                         f"{bcolors.WARNING}  User Guidance: Update beliefs, but no beliefs provided. Retrying as is.{bcolors.ENDC}"
                     )
@@ -1129,24 +1454,32 @@ class BDI(Agent, Generic[T]):
             traceback.print_exc()
             applied_successfully = False
 
-        return applied_successfully
+        return (applied_successfully, beliefs_updated)
 
     async def _human_in_the_loop_intervention(
         self,
         intention: Intention,
         failed_step: IntentionStep,
         step_result: Optional[AgentRunResult],
-    ) -> bool:
+    ) -> tuple[bool, bool]:
         """
         Orchestrates the full human-in-the-loop interaction when a step fails.
 
         Returns:
-            True if the user provided guidance that was successfully applied, False otherwise.
+            Tuple of (applied_successfully, beliefs_updated)
         """
         if self.verbose:
             print(
                 f"{bcolors.SYSTEM}Starting human-in-the-loop intervention...{bcolors.ENDC}"
             )
+
+        # Log HITL start
+        if self.log_file_path:
+            hitl_md = f"### Human-in-the-Loop Intervention\n"
+            hitl_md += f"**Desire:** {intention.desire_id}\n"
+            hitl_md += f"**Failed Step:** {failed_step.description}\n"
+            hitl_md += f"*Started: {datetime.now().isoformat()}*"
+            self._write_to_log_file(hitl_md)
 
         # 1. Build failure context
         failure_context = self._build_failure_context(
@@ -1166,19 +1499,19 @@ class BDI(Agent, Generic[T]):
             print(
                 f"\n{bcolors.WARNING}HITL interaction interrupted. Continuing without user guidance.{bcolors.ENDC}"
             )
-            return False
+            return (False, False)
 
         if user_input.lower() in ["quit", "exit", "q"]:
             print(
                 f"{bcolors.SYSTEM}User chose to exit HITL. Continuing without guidance.{bcolors.ENDC}"
             )
-            return False
+            return (False, False)
 
         if not user_input:
             print(
                 f"{bcolors.WARNING}No guidance provided. Continuing without changes.{bcolors.ENDC}"
             )
-            return False
+            return (False, False)
 
         # 4. Interpret user guidance via LLM
         directive = await self._interpret_user_nl_guidance(user_input, failure_context)
@@ -1187,7 +1520,7 @@ class BDI(Agent, Generic[T]):
             print(
                 f"{bcolors.FAIL}Failed to interpret user guidance. Continuing without changes.{bcolors.ENDC}"
             )
-            return False
+            return (False, False)
 
         # 5. Present interpretation back to user for confirmation
         summary = self._summarize_directive_for_user(directive)
@@ -1201,7 +1534,7 @@ class BDI(Agent, Generic[T]):
             print(
                 f"\n{bcolors.WARNING}Confirmation interrupted. Not applying guidance.{bcolors.ENDC}"
             )
-            return False
+            return (False, False)
 
         if confirmation in ["n", "no"]:
             print(
@@ -1236,18 +1569,29 @@ class BDI(Agent, Generic[T]):
             print(f"{bcolors.WARNING}Invalid response. Assuming 'yes'.{bcolors.ENDC}")
 
         # 6. Apply the guidance
-        applied_successfully = await self._apply_user_guided_action(
+        applied_successfully, beliefs_updated = await self._apply_user_guided_action(
             directive, intention
         )
 
+        # Log HITL outcome
+        if self.log_file_path:
+            outcome_md = f"**User Input:** {user_input}\n"
+            outcome_md += f"**Action Type:** {directive.manipulation_type}\n"
+            outcome_md += f"**LLM Interpretation:** {directive.user_guidance_summary}\n"
+            outcome_md += f"**Applied Successfully:** {'✅ Yes' if applied_successfully else '❌ No'}\n"
+            if beliefs_updated:
+                outcome_md += f"**Beliefs Updated:** ✅ Yes\n"
+            outcome_md += f"*Completed: {datetime.now().isoformat()}*"
+            self._write_to_log_file(outcome_md)
+
         if applied_successfully:
             print(f"{bcolors.SYSTEM}User guidance applied successfully.{bcolors.ENDC}")
-            return True
+            return (True, beliefs_updated)
         else:
             print(
                 f"{bcolors.WARNING}Failed to apply user guidance completely.{bcolors.ENDC}"
             )
-            return False
+            return (False, beliefs_updated)
 
     def _generate_history_context(
         self, intention: Intention, max_history: int = 3, include_details: bool = False

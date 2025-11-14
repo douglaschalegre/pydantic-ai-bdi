@@ -24,16 +24,17 @@ git_server = MCPServerStdio(
 agent = BDI(
     model,
     desires=[
-        "I need a report of the commit history of the pydantic-ai repository for a presentation"
+        "I need a report of the commit history of the pydantic-ai-bdi repository for a presentation. The repository path is /Users/douglas/code/masters/pydantic-ai-bdi"
     ],
     intentions=[
-        "Check the commit history of the pydantic-ai repository",
+        "Check the commit history of the pydantic-ai-bdi repository",
         "Summarize the commit history",
         "Create a presentation of the commit history",
-        "Summarize the latest advancements in the pydantic-ai repository",
+        "Summarize the latest advancements in the pydantic-ai-bdi repository",
     ],
     verbose=True,
     enable_human_in_the_loop=True,
+    log_file_path="./bdi_agent_log.md",
     mcp_servers=[git_server],
 )
 

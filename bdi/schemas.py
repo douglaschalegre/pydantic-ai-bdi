@@ -184,6 +184,35 @@ class ReconsiderResult(BaseModel):
     reason: str | None = None
 
 
+class ExtractedBelief(BaseModel):
+    """Represents a belief extracted from a step execution result."""
+
+    name: str = Field(
+        description="A concise identifier for the belief (e.g., 'git_repo_path', 'network_status', 'file_exists')"
+    )
+    value: str = Field(
+        description="The value or content of the belief (e.g., '/actual/path', 'offline', 'true')"
+    )
+    certainty: float = Field(
+        ge=0.0,
+        le=1.0,
+        default=0.8,
+        description="Confidence level in this belief (0.0 = uncertain, 1.0 = certain)",
+    )
+
+
+class BeliefExtractionResult(BaseModel):
+    """Result of extracting beliefs from a step execution outcome."""
+
+    beliefs: List[ExtractedBelief] = Field(
+        default=[],
+        description="List of beliefs extracted from the step result",
+    )
+    explanation: str = Field(
+        description="Brief explanation of what information was extracted and why these beliefs are relevant"
+    )
+
+
 class PlanManipulationDirective(BaseModel):
     """
     Defines the structured directive for how the BDI agent should manipulate
@@ -244,4 +273,6 @@ __all__ = [
     "DetailedStepList",
     "ReconsiderResult",
     "PlanManipulationDirective",
+    "ExtractedBelief",
+    "BeliefExtractionResult",
 ]
