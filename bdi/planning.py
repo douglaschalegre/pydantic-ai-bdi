@@ -149,6 +149,12 @@ async def generate_intentions_from_desires(agent: "BDI") -> None:
         Available Tools:
         (The underlying Pydantic AI agent will provide the available tools, including those from MCP, to the LLM.)
 
+        STEP DESCRIPTION GUIDELINES:
+        - Write step descriptions as ACTIONS to perform, not questions to answer (e.g., "Retrieve git commit history" NOT "Check if repository path exists")
+        - For tool calls, describe WHAT the tool will do (e.g., "Use git_log to fetch commit history with max_count=50")
+        - For analysis tasks, describe the OUTPUT expected (e.g., "Extract commit summary from git log results and create presentation outline")
+        - Avoid CHECK/VERIFY steps unless they're truly validation steps with binary success criteria
+
         Generate a sequence of detailed steps required to execute this intention. Ensure the steps are logical and sequential.
         Structure the output as a list of steps according to the required format.
         Focus exclusively on HOW to achieve the intention '{hl_intention.description}' using only the allowed action types.
