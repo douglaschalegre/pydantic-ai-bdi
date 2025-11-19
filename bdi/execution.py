@@ -58,7 +58,14 @@ async def analyze_step_outcome_and_update_beliefs(
     {history_context}
 
     Based on the result obtained and recent history, did the step successfully achieve its original objective?
-    Consider the context of previous steps and their outcomes in your assessment.
+
+    Important guidelines:
+    - If the step is a CHECK/VERIFY action and the result provides a definitive answer (yes/no, found/not found), consider it successful
+    - If the step attempted a tool call and got an error, consider it failed
+    - If the step was supposed to discover information and did so, consider it successful
+    - If the step was supposed to perform an action and did not (just discussed it), consider it failed
+    - If the result explicitly states success/completion, consider it successful
+
     Respond with a boolean value: True for success, False for failure.
     """
     step_success = False
@@ -247,6 +254,19 @@ Perform this action now.
             print(
                 f"{bcolors.SYSTEM}  Tool '{current_step.tool_name}' result: {step_result.output}{bcolors.ENDC}"
             )
+
+            # DEBUG: Log all tool calls that occurred
+            if agent.verbose and step_result.all_messages:
+                print(f"{bcolors.SYSTEM}  === DEBUG: Tool Call Details ==={bcolors.ENDC}")
+                for msg in step_result.all_messages:
+                    if hasattr(msg, 'parts'):
+                        for part in msg.parts:
+                            if hasattr(part, 'tool_name'):
+                                print(f"{bcolors.SYSTEM}    Tool: {part.tool_name}{bcolors.ENDC}")
+                                print(f"{bcolors.SYSTEM}    Args: {part.args}{bcolors.ENDC}")
+                            elif hasattr(part, 'tool_call_id'):
+                                print(f"{bcolors.SYSTEM}    Result: {part.content[:200]}...{bcolors.ENDC}")
+                print(f"{bcolors.SYSTEM}  === End Tool Call Details ==={bcolors.ENDC}")
         else:
             if agent.verbose:
                 print(
