@@ -15,7 +15,8 @@ load_dotenv()
 #     "gemma3:1b", provider=OllamaProvider(base_url=os.getenv("OLLAMA_BASE_URL"))
 # )
 model = GroqModel(
-    "llama-3.1-8b-instant", provider=GroqProvider(api_key=os.getenv("PROVIDER_API_KEY"))
+    "moonshotai/kimi-k2-instruct-0905",
+    provider=GroqProvider(api_key=os.getenv("PROVIDER_API_KEY")),
 )
 git_server = MCPServerStdio(
     "uvx", args=["mcp-server-git"], tool_prefix="git", timeout=60
