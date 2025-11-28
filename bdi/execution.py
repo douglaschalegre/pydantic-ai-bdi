@@ -256,16 +256,25 @@ Perform this action now.
             )
 
             # DEBUG: Log all tool calls that occurred
-            if agent.verbose and step_result.all_messages:
-                print(f"{bcolors.SYSTEM}  === DEBUG: Tool Call Details ==={bcolors.ENDC}")
-                for msg in step_result.all_messages:
-                    if hasattr(msg, 'parts'):
+            if agent.verbose and step_result.all_messages():
+                print(
+                    f"{bcolors.SYSTEM}  === DEBUG: Tool Call Details ==={bcolors.ENDC}"
+                )
+                for msg in step_result.all_messages():
+                    if hasattr(msg, "parts"):
                         for part in msg.parts:
-                            if hasattr(part, 'tool_name'):
-                                print(f"{bcolors.SYSTEM}    Tool: {part.tool_name}{bcolors.ENDC}")
-                                print(f"{bcolors.SYSTEM}    Args: {part.args}{bcolors.ENDC}")
-                            elif hasattr(part, 'tool_call_id'):
-                                print(f"{bcolors.SYSTEM}    Result: {part.content[:200]}...{bcolors.ENDC}")
+                            if hasattr(part, "tool_name"):
+                                print(
+                                    f"{bcolors.SYSTEM}    Tool: {part.tool_name}{bcolors.ENDC}"
+                                )
+                                if hasattr(part, "args"):
+                                    print(
+                                        f"{bcolors.SYSTEM}    Args: {part.args}{bcolors.ENDC}"
+                                    )
+                            elif hasattr(part, "tool_call_id"):
+                                print(
+                                    f"{bcolors.SYSTEM}    Result: {part.content[:200]}...{bcolors.ENDC}"
+                                )
                 print(f"{bcolors.SYSTEM}  === End Tool Call Details ==={bcolors.ENDC}")
         else:
             if agent.verbose:
