@@ -111,14 +111,17 @@ async def reconsider_current_intention(agent: "BDI") -> None:
     Remaining Plan Steps (for Desire ID '{intention.desire_id}'):
     {remaining_steps_text}
 
-    Critically evaluate:
-    1. Is this remaining plan still likely to succeed in achieving the original desire '{intention.desire_id}', considering the current beliefs and step history?
-    2. Are there any patterns in the step history that suggest the plan needs adjustment?
-    3. Are there any direct contradictions between the beliefs, history, and the plan's assumptions?
-    4. Based on the history of successful and failed steps, should the remaining plan be modified?
+    Evaluate whether the remaining plan should continue or needs revision.
 
-    Respond with only with True if the plan seems sound to continue.
-    Respond with False followed by a brief explanation if the plan is flawed, unlikely to succeed, or contradicted by beliefs.
+    Provide your assessment as:
+    - valid: true if the plan seems sound to continue, false if it needs revision
+    - reason: if valid is false, provide a brief explanation of why the plan is flawed
+
+    Consider:
+    1. Is this remaining plan still likely to succeed in achieving the original desire '{intention.desire_id}'?
+    2. Are there patterns in the step history suggesting the plan needs adjustment?
+    3. Are there contradictions between beliefs, history, and the plan's assumptions?
+    4. Based on the history of successful and failed steps, should the plan be modified?
     """
 
     try:
@@ -173,6 +176,25 @@ async def reconsider_current_intention(agent: "BDI") -> None:
         print(
             f"{bcolors.FAIL}  Error during intention reconsideration LLM call: {recon_e}{bcolors.ENDC}"
         )
+        if agent.verbose:
+            traceback.print_exc()
+
+        # Fallback: assume plan is valid but log the error
+        print(
+            f"{bcolors.WARNING}  Fallback: Assuming plan is valid. Error in reconsideration will not block progress.{bcolors.ENDC}"
+        )
+
+        # Log error to markdown file
+        if agent.log_file_path:
+            from bdi.logging import write_to_log_file
+
+            error_md = f"\n⚠️ **Reconsideration Error:**\n"
+            error_md += f"*Failed to evaluate plan validity. Assuming valid and continuing.*\n"
+            error_md += f"*Error: {str(recon_e)}*\n"
+            write_to_log_file(agent, error_md)
+
+        # Return without invalidating the plan (same as if valid=True)
+        return
 
 
 __all__ = [
