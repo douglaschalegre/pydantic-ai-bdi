@@ -8,6 +8,7 @@ from pydantic_ai.models.groq import GroqModel
 from pydantic_ai.providers.groq import GroqProvider
 from bdi import BDI
 from dotenv import load_dotenv
+import pathlib
 
 load_dotenv()
 
@@ -21,6 +22,14 @@ model = GroqModel(
 git_server = MCPServerStdio(
     "uvx", args=["mcp-server-git"], tool_prefix="git", timeout=60
 )
+repo_path = str(pathlib.Path(__file__).parent.resolve())
+fs = MCPServerStdio(
+    "npx",
+    args=["-y", "@modelcontextprotocol/server-filesystem", repo_path],
+    tool_prefix="fs",
+    timeout=60,
+)
+MCP_SERVERS = [git_server, fs]
 
 agent = BDI(
     model,
@@ -36,7 +45,7 @@ agent = BDI(
     verbose=True,
     enable_human_in_the_loop=True,
     log_file_path="./bdi_agent_log.md",
-    mcp_servers=[git_server],
+    mcp_servers=MCP_SERVERS,
 )
 
 
