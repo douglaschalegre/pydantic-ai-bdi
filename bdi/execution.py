@@ -11,7 +11,7 @@ import traceback
 import json
 
 from helper.util import bcolors
-from bdi.schemas import IntentionStep, BeliefExtractionResult, DesireStatus
+from bdi.schemas import IntentionStep, BeliefExtractionResult, DesireStatus, StepAssessmentResult
 from bdi.logging import log_states, write_to_log_file, format_beliefs_for_context
 from bdi.monitoring import generate_history_context
 
@@ -167,45 +167,91 @@ async def analyze_step_outcome_and_update_beliefs(
     assessment_prompt = f"""
     Original objective for the step: "{step.description}"
     Result obtained: "{result.output}"
+    Step type: {"Tool call: " + step.tool_name if step.is_tool_call else "Descriptive step"}
 
     Recent step history:
     {history_context}
 
-    Based on the result obtained and recent history, did the step successfully achieve its original objective?
+    Evaluate if the step successfully achieved its original objective.
 
-    Important guidelines:
-    - If the step is a CHECK/VERIFY action and the result provides a definitive answer (yes/no, found/not found), consider it successful
-    - If the step attempted a tool call and got an error, consider it failed
-    - If the step was supposed to discover information and did so, consider it successful
-    - If the step was supposed to perform an action and did not (just discussed it), consider it failed
-    - If the result explicitly states success/completion, consider it successful
+    Assessment Guidelines:
 
-    Respond with a boolean value: True for success, False for failure.
+    FOR TOOL CALL STEPS:
+    - If the tool executed and returned data (not an error message), mark as SUCCESS
+    - The result may include analysis or discussion of the data - this is normal and doesn't indicate failure
+    - Only mark as FAILED if the tool returned an error, exception, or "not found" type message
+
+    FOR CHECK/VERIFY STEPS:
+    - If the result provides a definitive answer (yes/no, found/not found, true/false), mark as SUCCESS
+
+    FOR DESCRIPTIVE STEPS (no tool call):
+    - If the step produced a concrete outcome or information, mark as SUCCESS
+    - If the step only discussed what should be done without doing it, mark as FAILED
+
+    FOR ALL STEPS:
+    - Ignore verbose explanations or analysis in the result - focus on whether the objective was met
+    - If the result explicitly states an error occurred, mark as FAILED
+    - If uncertain, prefer SUCCESS over FAILURE (be lenient)
+
+    Provide your assessment:
+    - success: true if the step achieved its objective, false if it clearly failed
+    - reason: brief explanation (especially important if failed)
     """
+
     step_success = False
     try:
-        assessment_result = await agent.run(assessment_prompt, output_type=bool)
-        if assessment_result and assessment_result.output:
+        assessment_result = await agent.run(assessment_prompt, output_type=StepAssessmentResult)
+        if assessment_result and assessment_result.output and assessment_result.output.success:
             if agent.verbose:
                 print(
                     f"{bcolors.SYSTEM}  LLM Assessment: Step SUCCEEDED.{bcolors.ENDC}"
                 )
+                if assessment_result.output.reason:
+                    print(
+                        f"{bcolors.SYSTEM}  Reason: {assessment_result.output.reason}{bcolors.ENDC}"
+                    )
             step_success = True
         else:
-            failure_reason = (
-                assessment_result.output
-                if (assessment_result and assessment_result.output)
+            reason = (
+                assessment_result.output.reason
+                if (assessment_result and assessment_result.output and assessment_result.output.reason)
                 else "No assessment result or negative assessment"
             )
             print(
-                f"{bcolors.WARNING}  LLM Assessment: Step FAILED. Reason: {failure_reason}{bcolors.ENDC}"
+                f"{bcolors.WARNING}  LLM Assessment: Step FAILED. Reason: {reason}{bcolors.ENDC}"
             )
             step_success = False
+
     except Exception as assess_e:
         print(
             f"{bcolors.FAIL}  Error during LLM success assessment: {assess_e}{bcolors.ENDC}"
         )
-        step_success = False
+
+        # INTELLIGENT FALLBACK: Don't default to failure
+        # For tool calls, check if the result contains error indicators
+        if step.is_tool_call and result and result.output:
+            error_indicators = ["error", "exception", "failed to", "could not", "not found", "does not exist"]
+            result_lower = result.output.lower()
+
+            has_error = any(indicator in result_lower for indicator in error_indicators)
+            has_substantial_output = len(result.output) > 50
+
+            if not has_error and has_substantial_output:
+                print(
+                    f"{bcolors.SYSTEM}  Fallback: Tool call returned substantial data without errors - marking as SUCCESS.{bcolors.ENDC}"
+                )
+                step_success = True
+            else:
+                print(
+                    f"{bcolors.WARNING}  Fallback: Tool call appears to have failed - marking as FAILURE.{bcolors.ENDC}"
+                )
+                step_success = False
+        else:
+            # For non-tool calls, default to failure since we can't assess
+            print(
+                f"{bcolors.WARNING}  Fallback: Cannot assess non-tool step - marking as FAILURE.{bcolors.ENDC}"
+            )
+            step_success = False
 
     # --- Belief Extraction ---
     # Extract beliefs from the step result regardless of success/failure

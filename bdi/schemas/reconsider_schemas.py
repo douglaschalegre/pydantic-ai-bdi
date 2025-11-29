@@ -14,6 +14,14 @@ class ReconsiderResult(BaseModel):
     reason: str | None = None
 
 
+class StepAssessmentResult(BaseModel):
+    """Result of step success assessment."""
+
+    success: bool
+    reason: str | None = None
+
+
 __all__ = [
     "ReconsiderResult",
+    "StepAssessmentResult",
 ]
