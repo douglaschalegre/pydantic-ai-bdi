@@ -98,11 +98,12 @@ The BDI framework is suitable for:
 ## Installation
 
 ```bash
-pip install pipenv
-export PIPENV_VENV_IN_PROJECT="enabled"
-mkdir .venv
-pipenv shell
-pipenv install
+# Install uv (if not already installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# Or: pip install uv
+
+# Install dependencies
+uv sync
 ```
 
 ## Usage Example
@@ -147,7 +148,13 @@ asyncio.run(main())
 ## Running the example
 
 ```bash
-pipenv run python example.py
+uv run python example.py
+```
+
+## Running the dev server
+
+```bash
+uv run uvicorn server.app:app --reload --port 8000
 ```
 
 ## License
