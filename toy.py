@@ -1,24 +1,33 @@
-import os
 import asyncio
 from pydantic_ai.mcp import MCPServerStdio
-
-# from pydantic_ai.models.openai import OpenAIChatModel
-# from pydantic_ai.providers.ollama import OllamaProvider
-from pydantic_ai.models.groq import GroqModel
-from pydantic_ai.providers.groq import GroqProvider
+from antigravity import AntigravityModel, AntigravityProvider
 from bdi import BDI
 from dotenv import load_dotenv
 import pathlib
 
 load_dotenv()
 
-# model = OpenAIChatModel(
-#     "gemma3:1b", provider=OllamaProvider(base_url=os.getenv("OLLAMA_BASE_URL"))
-# )
-model = GroqModel(
-    "moonshotai/kimi-k2-instruct-0905",
-    provider=GroqProvider(api_key=os.getenv("PROVIDER_API_KEY")),
+# Create Antigravity provider and model
+# First run will trigger OAuth flow to authenticate with Google
+provider = AntigravityProvider()
+
+# Choose your model - options include:
+# Antigravity quota (shared, may hit rate limits faster):
+# - "claude-sonnet-4-5": Claude Sonnet 4.5
+# - "claude-sonnet-4-5-thinking": Claude Sonnet 4.5 with extended thinking
+# - "claude-opus-4-5-thinking": Claude Opus 4.5 with extended thinking
+# - "gemini-3-pro": Gemini 3 Pro
+# - "gemini-3-pro-high": Gemini 3 Pro (high thinking)
+# - "gemini-3-flash": Gemini 3 Flash
+#
+# Gemini CLI quota (separate quota pool, less likely to be rate limited):
+# - "gemini-2.5-flash": Gemini 2.5 Flash (recommended for testing)
+# - "gemini-2.5-pro": Gemini 2.5 Pro
+model = AntigravityModel(
+    "gemini-2.5-flash",  # Using Gemini 2.5 Flash (separate quota, less rate limiting)
+    provider=provider,
 )
+
 git_server = MCPServerStdio(
     "uvx", args=["mcp-server-git"], tool_prefix="git", timeout=60
 )
