@@ -662,7 +662,7 @@ async def human_in_the_loop_intervention(
 
     # 6. Apply the guidance
     applied_successfully, beliefs_updated = await apply_user_guided_action(
-        directive, agent, intention
+        agent, directive, intention
     )
 
     # Log HITL outcome

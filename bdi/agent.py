@@ -35,9 +35,11 @@ class BDI(Agent, Generic[T]):
         verbose: bool = False,
         enable_human_in_the_loop: bool = False,
         log_file_path: Optional[str] = None,
+        output_retries: int = 3,  # Higher default for structured output retries
         **kwargs,
     ):
-        super().__init__(*args, **kwargs)
+        # Pass output_retries to the parent Agent class
+        super().__init__(*args, output_retries=output_retries, **kwargs)
         self.beliefs = BeliefSet()
         self.desires: List[Desire] = []
         self.intentions: deque = deque()

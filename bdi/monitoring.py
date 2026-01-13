@@ -4,6 +4,7 @@ This module provides functions for reconsidering the validity of current plans
 based on updated beliefs and step execution history.
 """
 
+import traceback
 from typing import TYPE_CHECKING
 from datetime import datetime
 from helper.util import bcolors
@@ -168,7 +169,7 @@ async def reconsider_current_intention(agent: "BDI") -> None:
                     # Import log_states from logging module
                     from bdi.logging import log_states
 
-                    desire.update_status(DesireStatus.PENDING, log_states)
+                    desire.update_status(DesireStatus.PENDING, lambda **kwargs: log_states(agent, **kwargs))
                     break
             log_states(agent, ["intentions", "desires"])
 
