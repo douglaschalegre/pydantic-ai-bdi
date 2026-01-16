@@ -93,8 +93,26 @@ async def extract_relevant_beliefs_from_result(
     For FAILED steps, focus on extracting information about WHY it failed - these constraints are valuable.
     For SUCCESSFUL steps, extract the positive information discovered.
 
-    Return a list of beliefs with concise names and clear values. Set certainty based on how definitive the information is.
-    If no meaningful beliefs can be extracted, return an empty list with an explanation.
+    IMPORTANT: Each belief MUST have exactly these three fields:
+    - "name": A concise identifier string (e.g., "repo_path", "commit_count", "error_type")
+    - "value": The actual value as a string (e.g., "/path/to/repo", "42", "permission_denied")
+    - "certainty": A float between 0.0 and 1.0 indicating confidence
+
+    Example of CORRECT format:
+    {{
+      "beliefs": [
+        {{"name": "repo_path", "value": "/Users/douglas/code/project", "certainty": 1.0}},
+        {{"name": "has_commits", "value": "true", "certainty": 0.9}}
+      ],
+      "explanation": "Extracted repository path and confirmed commits exist."
+    }}
+
+    Example of INCORRECT format (DO NOT USE):
+    {{
+      "beliefs": [{{"repo_path": "/path", "has_commits": true}}]
+    }}
+
+    If no meaningful beliefs can be extracted, return an empty beliefs list with an explanation.
     """
 
     extracted_beliefs = []
@@ -124,11 +142,21 @@ async def extract_relevant_beliefs_from_result(
                 )
 
     except Exception as extract_e:
-        print(
-            f"{bcolors.FAIL}  Error during belief extraction: {extract_e}{bcolors.ENDC}"
-        )
-        if agent.verbose:
-            traceback.print_exc()
+        # Belief extraction is non-critical - log a warning but don't spam with tracebacks
+        error_msg = str(extract_e)
+        if "output validation" in error_msg.lower() or "validation error" in error_msg.lower():
+            # Common case: LLM returned wrong format - just note it briefly
+            if agent.verbose:
+                print(
+                    f"{bcolors.WARNING}  Belief extraction skipped: LLM output format issue.{bcolors.ENDC}"
+                )
+        else:
+            # Unexpected error - show more detail
+            print(
+                f"{bcolors.WARNING}  Belief extraction failed: {extract_e}{bcolors.ENDC}"
+            )
+            if agent.verbose:
+                traceback.print_exc()
 
     return extracted_beliefs
 

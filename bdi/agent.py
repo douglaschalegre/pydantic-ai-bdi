@@ -101,9 +101,26 @@ class BDI(Agent, Generic[T]):
         - Inferred or assumed information not explicitly stated
         - Vague or subjective statements
 
-        Return beliefs with clear, concise names (e.g., 'repo_path', 'project_name', 'target_url').
-        Set certainty to 1.0 for explicitly stated facts.
-        If no factual information can be extracted, return an empty list.
+        IMPORTANT: Each belief MUST have exactly these three fields:
+        - "name": A concise identifier string (e.g., "repo_path", "project_name", "target_url")
+        - "value": The actual value as a string (e.g., "/path/to/repo", "my-project", "https://api.example.com")
+        - "certainty": A float between 0.0 and 1.0 (use 1.0 for explicitly stated facts)
+
+        Example of CORRECT format:
+        {{
+          "beliefs": [
+            {{"name": "repo_path", "value": "/Users/douglas/code/masters/pydantic-ai-bdi", "certainty": 1.0}},
+            {{"name": "repo_name", "value": "pydantic-ai-bdi", "certainty": 1.0}}
+          ],
+          "explanation": "Extracted repository path and name from desire description."
+        }}
+
+        Example of INCORRECT format (DO NOT USE):
+        {{
+          "beliefs": [{{"repo_path": "/path", "repo_name": "project"}}]
+        }}
+
+        If no factual information can be extracted, return an empty beliefs list with an explanation.
         """
 
         try:
@@ -131,7 +148,14 @@ class BDI(Agent, Generic[T]):
                     log_states(self, ["beliefs"])
 
         except Exception as e:
-            if self.verbose:
+            # Belief extraction is non-critical - log briefly and continue
+            error_msg = str(e)
+            if "output validation" in error_msg.lower() or "validation error" in error_msg.lower():
+                if self.verbose:
+                    print(
+                        f"{bcolors.WARNING}Initial belief extraction skipped: LLM output format issue.{bcolors.ENDC}"
+                    )
+            else:
                 print(
                     f"{bcolors.WARNING}Could not extract beliefs from desires: {e}{bcolors.ENDC}"
                 )
