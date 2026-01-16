@@ -10,7 +10,7 @@ from datetime import datetime
 
 from pydantic_ai import Agent
 from helper.util import bcolors
-from bdi.schemas import BeliefSet, Desire
+from bdi.schemas import BeliefSet, Desire, generate_desire_id
 from bdi.logging import log_states
 from bdi.planning import generate_intentions_from_desires
 from bdi.execution import execute_intentions
@@ -60,10 +60,9 @@ class BDI(Agent, Generic[T]):
         Args:
             desire_strings: List of desire description strings
         """
-        for i, desire_string in enumerate(desire_strings or []):
-            desire_id = f"desire_{i + 1}"
+        for desire_string in desire_strings or []:
             desire = Desire(
-                id=desire_id,
+                id=generate_desire_id(desire_string),
                 description=desire_string,
                 priority=0.5,
             )
@@ -95,9 +94,17 @@ class BDI(Agent, Generic[T]):
         """Execute one step of the current intention."""
         return await execute_intentions(self)
 
-    async def bdi_cycle(self) -> None:
-        """Run one BDI reasoning cycle."""
-        await bdi_cycle(self)
+    async def bdi_cycle(self) -> str:
+        """Run one BDI reasoning cycle.
+
+        Returns:
+            Status string indicating cycle outcome:
+            - "executed": Normal cycle with work done
+            - "idle_prompted": Agent was idle, user provided new desire
+            - "stopped": User requested to quit
+            - "interrupted": Non-interactive mode (EOF) or KeyboardInterrupt
+        """
+        return await bdi_cycle(self)
 
     def log_states(self, types: list, message: str | None = None):
         """Log agent state to console and file."""

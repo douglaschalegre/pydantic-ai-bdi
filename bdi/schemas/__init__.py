@@ -16,6 +16,7 @@ from bdi.schemas.belief_schemas import (
 from bdi.schemas.desire_schemas import (
     Desire,
     DesireStatus,
+    generate_desire_id,
 )
 
 # Intention-related schemas
@@ -48,6 +49,7 @@ __all__ = [
     # Desire schemas
     "Desire",
     "DesireStatus",
+    "generate_desire_id",
     # Intention schemas
     "IntentionStep",
     "StepHistory",

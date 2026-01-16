@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from datetime import datetime
 
 from helper.util import bcolors
-from bdi.schemas import DesireStatus
+from bdi.schemas import DesireStatus, Desire, generate_desire_id
 from bdi.logging import log_states, write_to_log_file
 from bdi.planning import generate_intentions_from_desires
 from bdi.execution import execute_intentions
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from bdi.agent import BDI
 
 
-async def bdi_cycle(agent: "BDI") -> None:
+async def bdi_cycle(agent: "BDI") -> str:
     """Run one BDI reasoning cycle including reconsideration.
 
     The cycle follows the standard BDI architecture phases:
@@ -28,8 +28,18 @@ async def bdi_cycle(agent: "BDI") -> None:
     4. Intention Execution (one step)
     5. Reconsideration (plan validity monitoring)
 
+    If the agent is idle (no intentions and no active desires), it will
+    interactively prompt the user for new desires via stdin.
+
     Args:
         agent: The BDI agent instance
+
+    Returns:
+        Status string indicating cycle outcome:
+        - "executed": Normal cycle with work done
+        - "idle_prompted": Agent was idle, user provided new desire
+        - "stopped": User requested to quit
+        - "interrupted": Non-interactive mode (EOF) or KeyboardInterrupt
     """
     agent.cycle_count += 1
 
@@ -81,6 +91,45 @@ async def bdi_cycle(agent: "BDI") -> None:
             print(
                 f"{bcolors.SYSTEM}No intentions pending and no active desires require new ones.{bcolors.ENDC}"
             )
+            # Agent is idle - prompt user for new desires
+            print(
+                f"{bcolors.SYSTEM}Agent is idle. Enter a new desire/goal (or 'quit' to exit):{bcolors.ENDC}"
+            )
+            try:
+                user_input = input("> ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print(f"\n{bcolors.WARNING}Input interrupted.{bcolors.ENDC}")
+                return "interrupted"
+
+            if not user_input or user_input.lower() in ["quit", "exit", "q"]:
+                print(f"{bcolors.SYSTEM}User requested stop.{bcolors.ENDC}")
+                return "stopped"
+
+            # Create new desire from user input
+            new_desire = Desire(
+                id=generate_desire_id(user_input),
+                description=user_input,
+                priority=0.5,
+            )
+            agent.desires.append(new_desire)
+            log_states(agent, ["desires"], message="New desire added from user prompt.")
+
+            # Generate intentions from the new desire
+            await generate_intentions_from_desires(agent)
+
+            # Log and return idle_prompted status
+            print(f"{bcolors.SYSTEM}--- BDI Cycle End (idle_prompted) ---{bcolors.ENDC}")
+            log_states(
+                agent,
+                types=["beliefs", "desires", "intentions"],
+                message="States after BDI cycle (idle_prompted)",
+            )
+            if agent.log_file_path:
+                write_to_log_file(
+                    agent,
+                    f"**Cycle {agent.cycle_count} End (idle_prompted)**\n*Timestamp: {datetime.now().isoformat()}*\n\n---",
+                )
+            return "idle_prompted"
 
     # 4. Intention Execution (One Step)
     hitl_info = {"hitl_modified_plan": False, "hitl_updated_beliefs": False}
@@ -129,6 +178,8 @@ async def bdi_cycle(agent: "BDI") -> None:
             agent,
             f"**Cycle {agent.cycle_count} End**\n*Timestamp: {datetime.now().isoformat()}*\n\n---",
         )
+
+    return "executed"
 
 
 __all__ = [
