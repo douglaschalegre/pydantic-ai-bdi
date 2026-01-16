@@ -61,9 +61,14 @@ agent = BDI(
 async def main():
     """Example BDI agent using an external MCP server for tools."""
     async with agent.run_mcp_servers():
-        for i in range(5):
-            print(f"\n===== Cycle {i + 1} =====")
-            await agent.bdi_cycle()
+        cycle = 0
+        while True:
+            cycle += 1
+            print(f"\n===== Cycle {cycle} =====")
+            status = await agent.bdi_cycle()
+            if status in ["stopped", "interrupted"]:
+                print(f"Agent cycle ended with status: {status}")
+                break
             await asyncio.sleep(2)
 
 

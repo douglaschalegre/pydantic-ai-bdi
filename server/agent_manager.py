@@ -74,7 +74,32 @@ class ManagedAgent:
             self.cycle_count += 1
             await self.emit("cycle.started", {"cycle": self.cycle_count})
             try:
-                await self.bdi.bdi_cycle()
+                status = await self.bdi.bdi_cycle()
+                if status in ["stopped", "interrupted"]:
+                    self.status = "stopped"
+                    await self.emit(
+                        "agent.status",
+                        {
+                            "state": {
+                                "status": "stopped",
+                                "cycleCount": self.cycle_count,
+                                "lastProgressAt": self.last_progress_at,
+                                "activeIntentionId": None,
+                            }
+                        },
+                    )
+                    await self.emit(
+                        "chat.message",
+                        {
+                            "message": {
+                                "id": str(uuid.uuid4()),
+                                "at": iso_now(),
+                                "sender": "system",
+                                "content": f"Agent stopped (status: {status})",
+                            }
+                        },
+                    )
+                    break
                 self.last_progress_at = iso_now()
                 # After cycle, compute diffs and emit events
                 await self._emit_state_diffs()
