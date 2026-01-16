@@ -10,6 +10,7 @@ from collections import deque
 from helper.util import bcolors
 from bdi.schemas import (
     Intention,
+    HighLevelIntention,
     HighLevelIntentionList,
     DetailedStepList,
 )
@@ -61,57 +62,83 @@ async def generate_intentions_from_desires(agent: "BDI") -> None:
     )
 
     # --- Stage 1: Generate High-Level Intentions ---
-    guidance_section = ""
+    # Check if explicit intentions were provided by the user
+    # If so, use them directly instead of generating via LLM
+    high_level_intentions: List[HighLevelIntention] = []
+
     if agent.initial_intention_guidance:
-        guidance_text = "\n".join(
-            [f"- {g}" for g in agent.initial_intention_guidance]
-        )
-        guidance_section = f"\n\nUser-Provided Strategic Guidance (Consider these as high-level intentions to guide planning):\n{guidance_text}"
+        # User provided explicit intentions - use them directly
+        # Associate all intentions with the first active/pending desire
+        # (In most cases, explicit intentions relate to a single primary desire)
+        active_desires = [d for d in agent.desires if d.status.value in ["pending", "active"]]
+        primary_desire_id = active_desires[0].id if active_desires else agent.desires[0].id
 
-    if agent.verbose:
         print(
-            f"{bcolors.SYSTEM}Stage 1: Generating high-level intentions...{bcolors.ENDC}"
+            f"{bcolors.SYSTEM}Using {len(agent.initial_intention_guidance)} explicit intentions provided by user (skipping Stage 1 LLM).{bcolors.ENDC}"
         )
-    prompt_stage1 = f"""
-    Given the following overall desires and current beliefs, identify high-level intentions required to fulfill these desires.
-    For each relevant desire, propose one or more concise intentions. Each intention should represent a distinct goal or task achievable *by you, the AI agent*.
 
-    Focus ONLY on WHAT needs to be done at a high level, but ensure these goals are achievable through information processing, analysis, or using the available tools.
-    Do *not* propose intentions that require physical actions in the real world (e.g., installing hardware), direct interaction with physical systems beyond your tool capabilities, or capabilities you do not possess based on the available tools.
-
-    Overall Desires:
-    {desires_text}
-    {guidance_section}
-
-    Current Beliefs:
-    {beliefs_text}
-
-    Available Tools:
-    (The underlying Pydantic AI agent will provide the available tools, including those from MCP, to the LLM.)
-
-    Respond with a list of high-level intentions using the required format. Associate each intention with its corresponding desire ID.
-    """
-    try:
-        stage1_result = await agent.run(
-            prompt_stage1, output_type=HighLevelIntentionList
-        )
-        if (
-            not stage1_result
-            or not stage1_result.output
-            or not stage1_result.output.intentions
-        ):
+        for intention_desc in agent.initial_intention_guidance:
+            high_level_intentions.append(
+                HighLevelIntention(
+                    desire_id=primary_desire_id,
+                    description=intention_desc,
+                )
+            )
+            if agent.verbose:
+                print(
+                    f"{bcolors.INTENTION}  - {intention_desc}{bcolors.ENDC}"
+                )
+    else:
+        # No explicit intentions - generate via LLM (original Stage 1 behavior)
+        if agent.verbose:
             print(
-                f"{bcolors.FAIL}Stage 1 failed: No high-level intentions generated.{bcolors.ENDC}"
+                f"{bcolors.SYSTEM}Stage 1: Generating high-level intentions...{bcolors.ENDC}"
+            )
+        prompt_stage1 = f"""
+        Given the following overall desires and current beliefs, identify high-level intentions required to fulfill these desires.
+        For each relevant desire, propose one or more concise intentions. Each intention should represent a distinct goal or task achievable *by you, the AI agent*.
+
+        Focus ONLY on WHAT needs to be done at a high level, but ensure these goals are achievable through information processing, analysis, or using the available tools.
+        Do *not* propose intentions that require physical actions in the real world (e.g., installing hardware), direct interaction with physical systems beyond your tool capabilities, or capabilities you do not possess based on the available tools.
+
+        Overall Desires:
+        {desires_text}
+
+        Current Beliefs:
+        {beliefs_text}
+
+        Available Tools:
+        (The underlying Pydantic AI agent will provide the available tools, including those from MCP, to the LLM.)
+
+        Respond with a list of high-level intentions using the required format. Associate each intention with its corresponding desire ID.
+        """
+        try:
+            stage1_result = await agent.run(
+                prompt_stage1, output_type=HighLevelIntentionList
+            )
+            if (
+                not stage1_result
+                or not stage1_result.output
+                or not stage1_result.output.intentions
+            ):
+                print(
+                    f"{bcolors.FAIL}Stage 1 failed: No high-level intentions generated.{bcolors.ENDC}"
+                )
+                return
+            high_level_intentions = stage1_result.output.intentions
+            print(
+                f"{bcolors.SYSTEM}Stage 1 successful: Generated {len(high_level_intentions)} high-level intentions.{bcolors.ENDC}"
+            )
+
+        except Exception as e:
+            print(
+                f"{bcolors.FAIL}Stage 1 failed: Error during LLM call: {e}{bcolors.ENDC}"
             )
             return
-        high_level_intentions = stage1_result.output.intentions
-        print(
-            f"{bcolors.SYSTEM}Stage 1 successful: Generated {len(high_level_intentions)} high-level intentions.{bcolors.ENDC}"
-        )
 
-    except Exception as e:
+    if not high_level_intentions:
         print(
-            f"{bcolors.FAIL}Stage 1 failed: Error during LLM call: {e}{bcolors.ENDC}"
+            f"{bcolors.FAIL}No high-level intentions available for Stage 2.{bcolors.ENDC}"
         )
         return
 

@@ -10,7 +10,7 @@ from datetime import datetime
 
 from pydantic_ai import Agent
 from helper.util import bcolors
-from bdi.schemas import BeliefSet, Desire, generate_desire_id
+from bdi.schemas import BeliefSet, Desire, generate_desire_id, BeliefExtractionResult
 from bdi.logging import log_states
 from bdi.planning import generate_intentions_from_desires
 from bdi.execution import execute_intentions
@@ -68,6 +68,73 @@ class BDI(Agent, Generic[T]):
             )
             self.desires.append(desire)
         log_states(self, ["desires"])
+
+    async def extract_beliefs_from_desires(self) -> None:
+        """Extract factual information from desire descriptions and add to beliefs.
+
+        This method analyzes desire descriptions to extract concrete facts that should
+        be recorded as initial beliefs, avoiding the need to rediscover this information
+        during execution.
+        """
+        if not self.desires:
+            return
+
+        desires_text = "\n".join(
+            [f"- {d.description}" for d in self.desires]
+        )
+
+        belief_extraction_prompt = f"""
+        Analyze the following desire descriptions and extract any factual information that should be recorded as beliefs.
+
+        Desire Descriptions:
+        {desires_text}
+
+        Extract ONLY concrete, factual information explicitly stated in the desires, such as:
+        - File paths or directory paths (e.g., "repository path is /path/to/repo")
+        - Names or identifiers (e.g., "the project is called X")
+        - URLs or endpoints
+        - Specific values or configurations mentioned
+        - Any other concrete facts that would be useful context
+
+        Do NOT extract:
+        - The goals or objectives themselves (these are desires, not beliefs)
+        - Inferred or assumed information not explicitly stated
+        - Vague or subjective statements
+
+        Return beliefs with clear, concise names (e.g., 'repo_path', 'project_name', 'target_url').
+        Set certainty to 1.0 for explicitly stated facts.
+        If no factual information can be extracted, return an empty list.
+        """
+
+        try:
+            extraction_result = await self.run(
+                belief_extraction_prompt, output_type=BeliefExtractionResult
+            )
+
+            if (
+                extraction_result
+                and extraction_result.output
+                and extraction_result.output.beliefs
+            ):
+                for belief in extraction_result.output.beliefs:
+                    self.beliefs.update(
+                        name=belief.name,
+                        value=belief.value,
+                        source="desire_description",
+                        certainty=belief.certainty,
+                    )
+
+                if self.verbose:
+                    print(
+                        f"{bcolors.BELIEF}Extracted {len(extraction_result.output.beliefs)} belief(s) from desires.{bcolors.ENDC}"
+                    )
+                    log_states(self, ["beliefs"])
+
+        except Exception as e:
+            if self.verbose:
+                print(
+                    f"{bcolors.WARNING}Could not extract beliefs from desires: {e}{bcolors.ENDC}"
+                )
 
     def _initialize_log_file(self) -> None:
         """Initialize the markdown log file with header information."""

@@ -51,6 +51,14 @@ async def bdi_cycle(agent: "BDI") -> str:
             section_title=f"BDI Cycle {agent.cycle_count}",
         )
 
+    # Extract beliefs from desires on first cycle (before any execution)
+    # This ensures factual information in desire descriptions is available as beliefs
+    if agent.cycle_count == 1 and not agent.beliefs.beliefs and agent.desires:
+        print(
+            f"{bcolors.SYSTEM}First cycle: Extracting initial beliefs from desire descriptions...{bcolors.ENDC}"
+        )
+        await agent.extract_beliefs_from_desires()
+
     log_states(
         agent,
         types=["beliefs", "desires", "intentions"],
