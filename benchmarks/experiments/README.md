@@ -37,13 +37,30 @@ experiments/
 
 ### 1. Setup Environment
 
-```bash
-# Install base dependencies
-pip install -r benchmarks/requirements.txt
+#### Using uv (Recommended - Fast!)
 
-# Install all framework dependencies
-pip install langgraph langchain-openai langchain-core crewai crewai-tools
+```bash
+# Install uv
+pip install uv
+
+# Install from project root
+cd pydantic-ai-bdi
+uv pip install -e ".[benchmark-all]"
 ```
+
+#### Using pip
+
+```bash
+# From project root
+cd pydantic-ai-bdi
+pip install -e ".[benchmark-all]"
+
+# Or from benchmarks/ directory
+cd benchmarks/
+./install-benchmarks.sh
+```
+
+See `INSTALLATION.md` for more options.
 
 ### 2. Get Your Participant Number
 

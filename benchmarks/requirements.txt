@@ -1,35 +1,35 @@
-# Core dependencies (should already be installed from main project)
-pydantic-ai>=0.0.1
-pydantic>=2.0.0
+# Benchmarking Dependencies
+#
+# RECOMMENDED: Install from root using uv:
+#   cd /path/to/pydantic-ai-bdi
+#   uv pip install -e ".[benchmark-all]"
+#
+# Or install specific groups:
+#   uv pip install -e ".[benchmark]"        # Core benchmarking only
+#   uv pip install -e ".[frameworks]"       # Add LangGraph & CrewAI
+#   uv pip install -e ".[viz]"              # Add visualization tools
+#
+# This requirements.txt is for backwards compatibility.
+# Dependencies are now managed in root pyproject.toml
 
-# Statistical analysis
+# Install main project + all benchmark dependencies
+-e ..
+
+# Core benchmarking
 scipy>=1.11.0
 numpy>=1.24.0
-
-# System metrics
 psutil>=5.9.0
-
-# Optional: For TOML parsing in validators
 tomli>=2.0.1; python_version < '3.11'
 
-# Framework dependencies for multi-participant experiments
-# Required for participants to implement agents in each framework
-
-# LangGraph - State machine agent framework
+# Framework dependencies
 langgraph>=0.2.0
 langchain-openai>=0.1.0
 langchain-core>=0.2.0
-
-# CrewAI - Multi-agent collaboration framework
 crewai>=0.28.0
 crewai-tools>=0.2.0
-
-# OpenAI (required by both frameworks)
 openai>=1.0.0
 
-# Visualization (for generating charts in reports)
+# Visualization
 matplotlib>=3.7.0
 seaborn>=0.12.0
-
-# Report generation
 markdown>=3.4.0

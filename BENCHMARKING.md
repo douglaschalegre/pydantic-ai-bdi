@@ -40,15 +40,35 @@ See `benchmarks/experiments/README.md` for complete participant guide.
 
 ### Installation
 
+#### Using uv (Recommended - Fast!)
+
 ```bash
-# Install benchmark dependencies
-pip install -r benchmarks/requirements.txt
+# Install from project root
+cd pydantic-ai-bdi
+uv pip install -e ".[benchmark-all]"
 ```
+
+#### Using pip
+
+```bash
+# Install from project root
+cd pydantic-ai-bdi
+pip install -e ".[benchmark-all]"
+
+# Or use convenience script from benchmarks/
+cd benchmarks/
+./install-benchmarks.sh
+```
+
+See `INSTALLATION.md` for detailed options.
 
 ### Run First Benchmark
 
 ```bash
 # Test with simple tasks
+benchmark-run --framework bdi --category simple
+
+# Or use full module path
 python -m benchmarks.evaluation.runner --framework bdi --category simple
 ```
 

@@ -13,8 +13,63 @@ dependencies = [
     "python-dotenv",
 ]
 
+[project.optional-dependencies]
+# Core benchmarking dependencies
+benchmark = [
+    "scipy>=1.11.0",
+    "numpy>=1.24.0",
+    "psutil>=5.9.0",
+    "tomli>=2.0.1; python_version < '3.11'",
+]
+
+# Framework dependencies for multi-participant experiments
+frameworks = [
+    "langgraph>=0.2.0",
+    "langchain-openai>=0.1.0",
+    "langchain-core>=0.2.0",
+    "crewai>=0.28.0",
+    "crewai-tools>=0.2.0",
+    "openai>=1.0.0",
+]
+
+# Visualization and reporting
+viz = [
+    "matplotlib>=3.7.0",
+    "seaborn>=0.12.0",
+    "markdown>=3.4.0",
+]
+
+# All benchmark dependencies combined
+benchmark-all = [
+    "scipy>=1.11.0",
+    "numpy>=1.24.0",
+    "psutil>=5.9.0",
+    "tomli>=2.0.1; python_version < '3.11'",
+    "langgraph>=0.2.0",
+    "langchain-openai>=0.1.0",
+    "langchain-core>=0.2.0",
+    "crewai>=0.28.0",
+    "crewai-tools>=0.2.0",
+    "openai>=1.0.0",
+    "matplotlib>=3.7.0",
+    "seaborn>=0.12.0",
+    "markdown>=3.4.0",
+]
+
+# Development dependencies
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+]
+
 [project.scripts]
 start = "cli:start"
+benchmark-run = "benchmarks.evaluation.runner:main"
+benchmark-analyze = "benchmarks.scripts.analyze_results:main"
+benchmark-viz = "benchmarks.scripts.visualize_results:main"
+experiment-run = "benchmarks.experiments.run_experiments:main"
 
 [build-system]
 requires = ["hatchling"]
