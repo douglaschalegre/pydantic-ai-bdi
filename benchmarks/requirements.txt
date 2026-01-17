@@ -12,20 +12,20 @@ psutil>=5.9.0
 # Optional: For TOML parsing in validators
 tomli>=2.0.1; python_version < '3.11'
 
-# Optional framework dependencies (install only if comparing)
-# Uncomment to enable specific framework comparisons:
+# Framework dependencies for multi-participant experiments
+# Required for participants to implement agents in each framework
 
-# LangGraph comparison
-# langgraph>=0.0.1
-# langchain-openai>=0.0.1
-# langchain-core>=0.1.0
+# LangGraph - State machine agent framework
+langgraph>=0.2.0
+langchain-openai>=0.1.0
+langchain-core>=0.2.0
 
-# CrewAI comparison
-# crewai>=0.1.0
-# crewai-tools>=0.0.1
+# CrewAI - Multi-agent collaboration framework
+crewai>=0.28.0
+crewai-tools>=0.2.0
 
-# AutoGPT comparison (if implementing)
-# autogpt>=0.5.0
+# OpenAI (required by both frameworks)
+openai>=1.0.0
 
 # Visualization (for generating charts in reports)
 matplotlib>=3.7.0

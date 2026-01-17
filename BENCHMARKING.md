@@ -7,11 +7,34 @@ Comprehensive benchmarking framework for evaluating and comparing the BDI (Belie
 This framework provides:
 
 1. **Task Suite**: 24+ carefully designed tasks across three complexity levels
-2. **Metrics Collection**: Comprehensive performance and quality metrics
-3. **Statistical Analysis**: Rigorous statistical comparisons with effect sizes
-4. **Framework Comparisons**: Head-to-head comparisons with LangGraph, CrewAI, and raw Pydantic AI
-5. **Usability Assessment**: Ease-of-use evaluation across multiple dimensions
-6. **Visualization Tools**: Generate publication-quality charts and reports
+2. **Multi-Participant Experiments**: Infrastructure for controlled studies with multiple participants
+3. **Metrics Collection**: Comprehensive performance and quality metrics
+4. **Statistical Analysis**: Rigorous statistical comparisons with effect sizes
+5. **Framework Comparisons**: Head-to-head comparisons with LangGraph and CrewAI
+6. **Usability Assessment**: Ease-of-use evaluation across multiple dimensions
+7. **Visualization Tools**: Generate publication-quality charts and reports
+
+## Two Modes of Use
+
+### 1. Pre-Built Agent Comparison (Quick Evaluation)
+
+Use the pre-implemented agents for quick comparisons:
+
+```bash
+python -m benchmarks.evaluation.runner --framework bdi --category simple
+```
+
+### 2. Multi-Participant Experiments (Scientific Research)
+
+For rigorous scientific studies, multiple participants implement their own agents:
+
+```bash
+# Participant implements agents in experiments/{bdi,langgraph,crewai}/experiment-N.py
+# Then runs:
+python -m benchmarks.experiments.run_experiments --participant N
+```
+
+See `benchmarks/experiments/README.md` for complete participant guide.
 
 ## Quick Start
 
