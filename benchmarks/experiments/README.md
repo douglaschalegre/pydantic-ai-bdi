@@ -209,7 +209,7 @@ python -m benchmarks.experiments.run_experiments --participant N --framework bdi
 ```
 
 This will:
-1. Run all 24 benchmark tasks (simple, medium, complex)
+1. Run all 6 benchmark tasks (2 simple, 2 medium, 2 complex)
 2. Collect performance metrics automatically
 3. Generate results in `benchmarks/results/participant-N/`
 4. Create analysis reports
