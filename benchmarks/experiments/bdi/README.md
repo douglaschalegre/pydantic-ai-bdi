@@ -2,7 +2,14 @@
 
 ## Overview
 
-Implement your BDI (Belief-Desire-Intention) agent here.
+**IMPORTANT**: For BDI experiments, you **USE** the existing BDI agent - you don't implement it from scratch!
+
+The BDI agent is already implemented in `bdi/agent.py`. Your job is to:
+1. Configure it appropriately for each task
+2. Optionally provide initial desires/intentions
+3. Let the BDI cycle run automatically
+
+This evaluates the **BDI architecture as designed** against other frameworks.
 
 ## Getting Started
 
@@ -11,20 +18,21 @@ Implement your BDI (Belief-Desire-Intention) agent here.
    cp TEMPLATE.py experiment-N.py  # Replace N with your participant number
    ```
 
-2. Edit `experiment-N.py` and implement the `run_task()` method
+2. Edit `experiment-N.py` and configure the BDI agent in `run_task()`
 
-3. Test your implementation:
+3. Test your configuration:
    ```bash
    python experiment-N.py
    ```
 
-## What to Implement
+## What You Configure
 
-Focus on the BDI reasoning cycle:
-- **Beliefs**: What knowledge should your agent extract and track?
-- **Desires**: How do you represent goals?
-- **Intentions**: How do you generate and execute plans?
-- **Reconsideration**: When should plans be adapted?
+The BDI agent handles all reasoning automatically. You configure:
+- **Model selection**: Which LLM to use (gpt-4, gpt-3.5-turbo, etc.)
+- **Initial desires**: Starting goals (or use task goal)
+- **Initial intentions**: Optional starting plan steps
+- **Tools**: What functions the agent can call
+- **Settings**: Verbose output, human-in-the-loop, logging
 
 ## BDI Architecture
 

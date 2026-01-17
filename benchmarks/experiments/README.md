@@ -9,7 +9,15 @@ This study evaluates three agent frameworks:
 - **LangGraph** (State machine graphs)
 - **CrewAI** (Multi-agent collaboration)
 
-Each participant will implement agents in **all three frameworks** to solve the same benchmark tasks.
+### Important Distinction
+
+- **BDI**: You **USE** the existing BDI agent (already implemented in `bdi/agent.py`). Just configure it for each task.
+
+- **LangGraph & CrewAI**: You **IMPLEMENT** your own agent from scratch using these frameworks.
+
+This compares the **BDI architecture as designed** against what you can build with other frameworks.
+
+Each participant will work with all three frameworks to solve the same benchmark tasks.
 
 ## Directory Structure
 
@@ -37,15 +45,31 @@ experiments/
 
 ### 1. Setup Environment
 
+#### What You Need
+
+For running experiments, you need:
+- **BDI Agent Framework** (pydantic-ai, etc.) - *Required to run BDI experiments*
+- **Agent Frameworks** (LangGraph, CrewAI) - *Required to run comparison experiments*
+- **Benchmark Tools** (scipy, numpy) - *Required for metrics collection*
+- **Visualization** (matplotlib) - *Optional, for charts*
+
+All of these are installed automatically with `benchmark-all`.
+
 #### Using uv (Recommended - Fast!)
 
 ```bash
-# Install uv
+# Install uv (one time)
 pip install uv
 
-# Install from project root
+# Install everything from project root
 cd pydantic-ai-bdi
 uv pip install -e ".[benchmark-all]"
+
+# This installs:
+# 1. BDI Agent Framework (bdi/, pydantic-ai)
+# 2. LangGraph & CrewAI frameworks
+# 3. Benchmark tools (scipy, numpy, psutil)
+# 4. Visualization tools (matplotlib, seaborn)
 ```
 
 #### Using pip
@@ -55,12 +79,23 @@ uv pip install -e ".[benchmark-all]"
 cd pydantic-ai-bdi
 pip install -e ".[benchmark-all]"
 
-# Or from benchmarks/ directory
+# Or use convenience script from benchmarks/
 cd benchmarks/
 ./install-benchmarks.sh
 ```
 
 See `INSTALLATION.md` for more options.
+
+#### Verify Installation
+
+```bash
+# Check everything is installed
+python -c "import bdi; print('✓ BDI Framework')"
+python -c "import pydantic_ai; print('✓ Pydantic AI')"
+python -c "import langgraph; print('✓ LangGraph')"
+python -c "import crewai; print('✓ CrewAI')"
+python -c "import scipy; print('✓ SciPy')"
+```
 
 ### 2. Get Your Participant Number
 

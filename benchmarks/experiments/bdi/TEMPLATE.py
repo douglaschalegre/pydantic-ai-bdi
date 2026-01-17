@@ -1,13 +1,12 @@
 """BDI Agent Experiment Template
 
-This template shows how to implement a BDI agent for the benchmark study.
-Copy this file to experiment-N.py (where N is your participant number) and
-implement the run_task method.
+This template shows how to USE the existing BDI agent for benchmark tasks.
+Copy this file to experiment-N.py (where N is your participant number).
 
-The framework boilerplate is provided - you only need to:
-1. Configure the BDI agent
-2. Define desires and initial intentions
-3. Implement any custom belief extraction or planning logic
+IMPORTANT: You DON'T implement the BDI architecture from scratch!
+The BDI agent is already provided - you just configure and use it.
+
+See toy.py in the project root for a complete usage example.
 """
 
 import sys
@@ -17,47 +16,38 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 from typing import Any, Dict
-from benchmarks.experiments.base_experiment import BaseExperiment, MetricCollector
+import asyncio
+from benchmarks.experiments.base_experiment import BaseExperiment
 from bdi.agent import BDI
 from bdi.schemas.desire_schemas import Desire
-from bdi.schemas.belief_schemas import Belief
 
 
 class BDIExperiment(BaseExperiment):
-    """Your BDI agent implementation.
+    """BDI agent experiment using the provided BDI framework.
 
-    Implement your agent logic in the run_task method below.
+    The BDI agent is ALREADY implemented in bdi/agent.py
+    Your job is to:
+    1. Configure it appropriately for each task
+    2. Provide initial desires/intentions (optional)
+    3. Let the BDI cycle run and collect metrics
+
+    The BDI framework automatically handles:
+    - Belief extraction from observations
+    - Deliberation (choosing which desires to pursue)
+    - Intention generation (planning steps to achieve desires)
+    - Plan execution
+    - Plan reconsideration
+    - Human-in-the-loop intervention (optional)
     """
 
     def __init__(self, experiment_id: str):
         super().__init__(experiment_id=experiment_id, framework="bdi")
         self.agent: BDI = None
 
-    async def setup(self):
-        """Setup your BDI agent.
-
-        The boilerplate for creating a BDI agent is provided.
-        Customize as needed for your design.
-        """
-        # Create BDI agent with your chosen configuration
-        self.agent = BDI(
-            model="openai:gpt-4",  # Or your preferred model
-            verbose=True,  # Set to False to reduce output
-            enable_human_in_the_loop=False,  # Enable if you want HITL
-        )
-
-        # TODO: Add any custom tools your agent needs
-        # Example:
-        # @self.agent.tool
-        # async def my_custom_tool(ctx, param: str) -> str:
-        #     """My custom tool description."""
-        #     # Your tool implementation
-        #     return result
-
     async def run_task(self, task_definition: Dict[str, Any]) -> Dict[str, Any]:
-        """Implement your BDI agent logic here.
+        """Run a task using the BDI agent.
 
-        This is where you implement your approach to solving tasks using BDI.
+        The BDI agent is already implemented - you just configure and use it.
 
         Args:
             task_definition: Contains:
@@ -73,88 +63,143 @@ class BDIExperiment(BaseExperiment):
         """
         metric_collector = self.get_metric_collector()
 
-        # TODO: Implement your BDI agent logic
-        # Below is a basic example - customize this for your approach
-
-        # 1. Extract goal and context
+        # Extract task details
         goal = task_definition['goal']
         initial_context = task_definition.get('initial_context', {})
 
-        # 2. Add initial beliefs from context
-        for key, value in initial_context.items():
-            self.agent.beliefs.add_belief(
-                Belief(
-                    name=key,
-                    value=value,
-                    source="initial_context",
-                    timestamp=0.0,
-                    certainty=1.0,
-                )
-            )
+        # ====================================================================
+        # Configure the BDI agent
+        # ====================================================================
+        # You can customize:
+        # - Model selection (openai:gpt-4, openai:gpt-3.5-turbo, etc.)
+        # - Initial desires (goals to achieve)
+        # - Initial intentions (optional plan steps)
+        # - Verbose output
+        # - Human-in-the-loop settings
+        # - Tools/MCP servers
 
-        # 3. Create desire(s) for the task
-        desire = Desire(
-            id=f"task_{task_definition.get('id', 'unknown')}",
-            description=goal,
-            priority=1.0,
+        self.agent = BDI(
+            model="openai:gpt-4",  # TODO: Choose your model
+            desires=[goal],  # Start with task goal as a desire
+            # intentions=[],  # Optional: Provide initial plan steps
+            verbose=True,  # Set to False to reduce output
+            enable_human_in_the_loop=False,  # Set to True for intervention
+            # log_file_path="experiment_log.md",  # Optional logging
         )
-        self.agent.desires.append(desire)
 
-        # 4. Run BDI cycles until task complete or max cycles reached
+        # ====================================================================
+        # Optional: Add tools the agent can use
+        # ====================================================================
+        # The BDI agent uses Pydantic AI's tool system
+        # You can add tools using the @tool decorator
+
+        # Example tools:
+        # @self.agent.tool
+        # async def read_file(ctx, file_path: str) -> str:
+        #     """Read contents of a file."""
+        #     with open(file_path, 'r') as f:
+        #         return f.read()
+        #
+        # @self.agent.tool
+        # async def write_file(ctx, file_path: str, content: str) -> str:
+        #     """Write content to a file."""
+        #     with open(file_path, 'w') as f:
+        #         f.write(content)
+        #     return f"Wrote to {file_path}"
+
+        # ====================================================================
+        # Run BDI cycles
+        # ====================================================================
+        # The agent runs in cycles:
+        # 1. Belief revision - update knowledge from observations
+        # 2. Deliberation - choose which desires to pursue
+        # 3. Intention generation - create plan to achieve desires
+        # 4. Execution - execute plan steps
+        # 5. Reconsideration - check if plan is still valid
+        # 6. Repeat until goals achieved or max cycles
+
         max_cycles = 50
-        result = None
+        final_result = None
 
         for cycle_num in range(max_cycles):
             # Record cycle for metrics
             metric_collector.record_cycle()
 
-            # TODO: Implement your BDI cycle logic
-            # This is where you customize the BDI reasoning cycle
-            # Options:
-            # a) Use the built-in cycle from bdi/cycle.py
-            # b) Implement your own cycle logic
-            # c) Hybrid approach
+            try:
+                # Run one BDI cycle
+                # This executes all the BDI reasoning automatically
+                status = await self.agent.bdi_cycle()
 
-            # Example: Check if desire is achieved
-            if desire.status.value == "ACHIEVED":
-                result = {"achieved": True, "desire": desire.description}
+                # Record step execution
+                metric_collector.record_step(success=True)
+
+                # Check if agent finished
+                if status in ["stopped", "interrupted"]:
+                    # Examine results
+                    achieved_desires = [
+                        d for d in self.agent.desires
+                        if d.status.value == "ACHIEVED"
+                    ]
+
+                    success = len(achieved_desires) > 0
+                    final_result = {
+                        'status': status,
+                        'achieved_desires': len(achieved_desires),
+                        'total_desires': len(self.agent.desires),
+                        'cycles': cycle_num + 1,
+                    }
+                    break
+
+            except Exception as e:
+                metric_collector.record_step(success=False)
+                print(f"Error in cycle {cycle_num + 1}: {e}")
+                final_result = {'error': str(e)}
                 break
 
-            if desire.status.value == "FAILED":
-                result = {"achieved": False, "error": "Task failed"}
-                break
+            # Brief pause between cycles
+            await asyncio.sleep(0.1)
 
-            # Record step execution
-            metric_collector.record_step(success=True)
-
-            # TODO: Add your step execution logic here
-            # ...
-
-        # 5. Extract final state
+        # ====================================================================
+        # Extract final state
+        # ====================================================================
         final_state = {
             'beliefs': {b.name: b.value for b in self.agent.beliefs.beliefs},
-            'desires': [{'id': d.id, 'status': d.status.value} for d in self.agent.desires],
-            'cycles': cycle_num + 1,
+            'desires': [
+                {
+                    'description': d.description,
+                    'status': d.status.value,
+                    'priority': d.priority,
+                }
+                for d in self.agent.desires
+            ],
+            'intentions_count': len(self.agent.intentions),
+            'cycles_completed': cycle_num + 1,
         }
 
+        # Determine success based on achieved desires
+        success = any(d['status'] == 'ACHIEVED' for d in final_state['desires'])
+
         return {
-            'success': desire.status.value == "ACHIEVED",
-            'result': result,
+            'success': success,
+            'result': final_result,
             'final_state': final_state,
         }
 
     async def teardown(self):
         """Clean up after task execution."""
-        # Add any cleanup logic here
+        # Add any cleanup logic here if needed
         pass
 
 
 # ============================================================================
-# Benchmark Runner Integration
+# Standalone Testing
 # ============================================================================
 
 async def main():
-    """Run this experiment standalone for testing."""
+    """Run this experiment standalone for testing.
+
+    This lets you test your BDI configuration before running the full benchmark.
+    """
     from benchmarks.tasks.simple_tasks import SIMPLE_TASKS
 
     # Create your experiment
@@ -169,16 +214,30 @@ async def main():
         'tools_available': task.tools_available,
     }
 
-    print(f"Running task: {task.name}")
+    print("=" * 80)
+    print(f"Testing BDI Agent")
+    print("=" * 80)
+    print(f"Task: {task.name}")
+    print(f"Goal: {task.goal}")
+    print(f"Context: {task.initial_context}")
+    print("=" * 80)
+    print()
+
+    # Run the task
     metrics = await experiment.execute_benchmark(task_def)
 
-    print(f"\nResults:")
+    # Show results
+    print()
+    print("=" * 80)
+    print("Results:")
+    print("=" * 80)
     print(f"  Success: {metrics.task_success}")
     print(f"  Execution time: {metrics.execution_time_seconds:.2f}s")
     print(f"  Cycles: {metrics.cycles_completed}")
     print(f"  Steps: {metrics.steps_executed}")
+    print(f"  Retries: {metrics.retries_attempted}")
+    print("=" * 80)
 
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())

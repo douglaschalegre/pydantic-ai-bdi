@@ -30,6 +30,8 @@ pip install -e ".[benchmark-all]"
 
 ## Installation Options
 
+> **Important**: All installation options include the **BDI Agent Framework** with its core dependencies (pydantic-ai, fastapi, etc.). This is required for running experiments and benchmarks.
+
 ### Base Installation
 
 Just the BDI agent framework (no benchmarking):
@@ -39,12 +41,15 @@ uv pip install -e .
 ```
 
 **Includes**:
-- BDI agent framework (`bdi/`)
+- **BDI agent framework** (`bdi/`) - *Required for all experiments*
+- Pydantic AI - *BDI's foundation*
 - FastAPI server (`server/`)
 - CLI tools
-- Core dependencies (pydantic-ai, fastapi, uvicorn)
+- Core dependencies (pydantic-ai, fastapi, uvicorn, python-dotenv, chardet)
 
 ### Benchmark Groups
+
+All groups below **include the base BDI framework** plus additional tools:
 
 Install specific benchmark features:
 
