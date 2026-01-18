@@ -110,11 +110,9 @@ class ExperimentRunner:
         }
 
         try:
-            # Execute task with timeout
-            metrics = await asyncio.wait_for(
-                experiment.execute_benchmark(task_def),
-                timeout=task.timeout_seconds,
-            )
+            # Execute task without timeout - let agent run to natural completion
+            # This is important for research to capture full agent behavior
+            metrics = await experiment.execute_benchmark(task_def)
 
             # Validate success criteria
             # Note: We'd need access to execution result for full validation
@@ -132,22 +130,21 @@ class ExperimentRunner:
                 'metrics': metrics.to_dict(),
             }
 
-        except asyncio.TimeoutError:
-            print(f"\n⏱️  Task timed out after {task.timeout_seconds}s")
-            return {
-                'task_id': task.id,
-                'success': False,
-                'error': 'timeout',
-                'timeout_seconds': task.timeout_seconds,
-            }
-
         except Exception as e:
             print(f"\n❌ Task failed with error: {e}")
-            return {
+            # Even on error, try to return partial metrics if available
+            result = {
                 'task_id': task.id,
                 'success': False,
                 'error': str(e),
             }
+
+            # Try to get partial metrics from the experiment
+            if hasattr(experiment, 'metrics') and experiment.metrics:
+                result['partial_metrics'] = experiment.metrics.to_dict()
+                print(f"  Captured partial metrics before failure")
+
+            return result
 
     async def run_framework(
         self,
