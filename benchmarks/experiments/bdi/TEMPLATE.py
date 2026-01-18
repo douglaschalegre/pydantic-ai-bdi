@@ -12,6 +12,11 @@ See toy.py in the project root for a complete usage example.
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+from antigravity.model import AntigravityModel
+from antigravity.provider import AntigravityProvider
+
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
@@ -21,6 +26,11 @@ from pydantic_ai.mcp import MCPServerStdio
 from benchmarks.experiments.base_experiment import BaseExperiment
 from bdi.agent import BDI
 from bdi.schemas.desire_schemas import Desire
+
+load_dotenv()
+
+
+provider = AntigravityProvider()
 
 
 class BDIExperiment(BaseExperiment):
@@ -46,6 +56,10 @@ class BDIExperiment(BaseExperiment):
         super().__init__(experiment_id=experiment_id, framework="bdi")
         self.agent: BDI = None
         self.mcp_servers = []
+        self.model = AntigravityModel(
+            "gemini-2.5-flash",  # Using Gemini 2.5 Flash (separate quota, less rate limiting)
+            provider=provider,
+        )
 
     async def run_task(self, task_definition: Dict[str, Any]) -> Dict[str, Any]:
         """Run a task using the BDI agent.
@@ -67,9 +81,9 @@ class BDIExperiment(BaseExperiment):
         metric_collector = self.get_metric_collector()
 
         # Extract task details
-        goal = task_definition['goal']
-        initial_context = task_definition.get('initial_context', {})
-        tools_available = task_definition.get('tools_available', [])
+        goal = task_definition["goal"]
+        initial_context = task_definition.get("initial_context", {})
+        tools_available = task_definition.get("tools_available", [])
 
         # ====================================================================
         # Set up MCP servers for tools
@@ -117,7 +131,7 @@ class BDIExperiment(BaseExperiment):
         # - Human-in-the-loop settings
 
         self.agent = BDI(
-            model="openai:gpt-4",  # TODO: Choose your model
+            model=self.model,
             desires=[goal],  # Start with task goal as a desire
             # intentions=[],  # Optional: Provide initial plan steps
             mcp_servers=self.mcp_servers,  # Provide tools via MCP servers
@@ -170,23 +184,24 @@ class BDIExperiment(BaseExperiment):
                     if status in ["stopped", "interrupted"]:
                         # Examine results
                         achieved_desires = [
-                            d for d in self.agent.desires
+                            d
+                            for d in self.agent.desires
                             if d.status.value == "ACHIEVED"
                         ]
 
                         success = len(achieved_desires) > 0
                         final_result = {
-                            'status': status,
-                            'achieved_desires': len(achieved_desires),
-                            'total_desires': len(self.agent.desires),
-                            'cycles': cycle_num + 1,
+                            "status": status,
+                            "achieved_desires": len(achieved_desires),
+                            "total_desires": len(self.agent.desires),
+                            "cycles": cycle_num + 1,
                         }
                         break
 
                 except Exception as e:
                     metric_collector.record_step(success=False)
                     print(f"Error in cycle {cycle_num + 1}: {e}")
-                    final_result = {'error': str(e)}
+                    final_result = {"error": str(e)}
                     break
 
                 # Brief pause between cycles
@@ -196,26 +211,26 @@ class BDIExperiment(BaseExperiment):
         # Extract final state
         # ====================================================================
         final_state = {
-            'beliefs': {b.name: b.value for b in self.agent.beliefs.beliefs},
-            'desires': [
+            "beliefs": {b.name: b.value for b in self.agent.beliefs.beliefs},
+            "desires": [
                 {
-                    'description': d.description,
-                    'status': d.status.value,
-                    'priority': d.priority,
+                    "description": d.description,
+                    "status": d.status.value,
+                    "priority": d.priority,
                 }
                 for d in self.agent.desires
             ],
-            'intentions_count': len(self.agent.intentions),
-            'cycles_completed': cycle_num + 1,
+            "intentions_count": len(self.agent.intentions),
+            "cycles_completed": cycle_num + 1,
         }
 
         # Determine success based on achieved desires
-        success = any(d['status'] == 'ACHIEVED' for d in final_state['desires'])
+        success = any(d["status"] == "ACHIEVED" for d in final_state["desires"])
 
         return {
-            'success': success,
-            'result': final_result,
-            'final_state': final_state,
+            "success": success,
+            "result": final_result,
+            "final_state": final_state,
         }
 
     async def teardown(self):
@@ -227,6 +242,7 @@ class BDIExperiment(BaseExperiment):
 # ============================================================================
 # Standalone Testing
 # ============================================================================
+
 
 async def main():
     """Run this experiment standalone for testing.
@@ -241,10 +257,10 @@ async def main():
     # Run a test task
     task = SIMPLE_TASKS[0]  # Try the first simple task
     task_def = {
-        'id': task.id,
-        'goal': task.goal,
-        'initial_context': task.initial_context,
-        'tools_available': task.tools_available,
+        "id": task.id,
+        "goal": task.goal,
+        "initial_context": task.initial_context,
+        "tools_available": task.tools_available,
     }
 
     print("=" * 80)
