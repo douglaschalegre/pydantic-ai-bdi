@@ -57,7 +57,7 @@ class BDIExperiment(BaseExperiment):
         self.agent: BDI = None
         self.mcp_servers = []
         self.model = AntigravityModel(
-            "gemini-2.5-flash",  # Using Gemini 2.5 Flash (separate quota, less rate limiting)
+            "gemini-2.5-flash",
             provider=provider,
         )
 
@@ -113,12 +113,6 @@ class BDIExperiment(BaseExperiment):
         # Add servers based on what tools are needed
         self.mcp_servers = [fs_server]
 
-        # TODO: Add other MCP servers as needed:
-        # - mcp-server-git: Git operations
-        # - mcp-server-brave-search: Web search
-        # - mcp-server-postgres: Database access
-        # - Custom MCP servers you create
-
         # ====================================================================
         # Configure the BDI agent
         # ====================================================================
@@ -169,18 +163,13 @@ class BDIExperiment(BaseExperiment):
         # Run BDI cycles within MCP server context
         async with self.agent.run_mcp_servers():
             for cycle_num in range(max_cycles):
-                # Record cycle for metrics
                 metric_collector.record_cycle()
 
                 try:
-                    # Run one BDI cycle
-                    # This executes all the BDI reasoning automatically
                     status = await self.agent.bdi_cycle()
 
-                    # Record step execution
                     metric_collector.record_step(success=True)
 
-                    # Check if agent finished
                     if status in ["stopped", "interrupted"]:
                         # Examine results
                         achieved_desires = [
