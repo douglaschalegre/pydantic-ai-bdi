@@ -99,6 +99,13 @@ async def bdi_cycle(agent: "BDI") -> str:
             print(
                 f"{bcolors.SYSTEM}No intentions pending and no active desires require new ones.{bcolors.ENDC}"
             )
+
+            if not agent.enable_human_in_the_loop:
+                print(
+                    f"{bcolors.SYSTEM}Agent is idle and human-in-the-loop is disabled. Stopping.{bcolors.ENDC}"
+                )
+                return "stopped"
+
             # Agent is idle - prompt user for new desires
             print(
                 f"{bcolors.SYSTEM}Agent is idle. Enter a new desire/goal (or 'quit' to exit):{bcolors.ENDC}"
@@ -126,7 +133,9 @@ async def bdi_cycle(agent: "BDI") -> str:
             await generate_intentions_from_desires(agent)
 
             # Log and return idle_prompted status
-            print(f"{bcolors.SYSTEM}--- BDI Cycle End (idle_prompted) ---{bcolors.ENDC}")
+            print(
+                f"{bcolors.SYSTEM}--- BDI Cycle End (idle_prompted) ---{bcolors.ENDC}"
+            )
             log_states(
                 agent,
                 types=["beliefs", "desires", "intentions"],
