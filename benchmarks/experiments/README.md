@@ -63,7 +63,7 @@ pip install uv
 
 # Install everything from project root
 cd pydantic-ai-bdi
-uv pip install -e ".[benchmark-all]"
+uv sync --extra benchmark-all
 
 # This installs:
 # 1. BDI Agent Framework (bdi/, pydantic-ai)
@@ -72,29 +72,17 @@ uv pip install -e ".[benchmark-all]"
 # 4. Visualization tools (matplotlib, seaborn)
 ```
 
-#### Using pip
-
-```bash
-# From project root
-cd pydantic-ai-bdi
-pip install -e ".[benchmark-all]"
-
-# Or use convenience script from benchmarks/
-cd benchmarks/
-./install-benchmarks.sh
-```
-
 See `INSTALLATION.md` for more options.
 
 #### Verify Installation
 
 ```bash
 # Check everything is installed
-python -c "import bdi; print('✓ BDI Framework')"
-python -c "import pydantic_ai; print('✓ Pydantic AI')"
-python -c "import langgraph; print('✓ LangGraph')"
-python -c "import crewai; print('✓ CrewAI')"
-python -c "import scipy; print('✓ SciPy')"
+uv run python -c "import bdi; print('✓ BDI Framework')"
+uv run python -c "import pydantic_ai; print('✓ Pydantic AI')"
+uv run python -c "import langgraph; print('✓ LangGraph')"
+uv run python -c "import crewai; print('✓ CrewAI')"
+uv run python -c "import scipy; print('✓ SciPy')"
 ```
 
 ### 2. Get Your Participant Number
@@ -185,13 +173,13 @@ Each template can be run standalone for testing:
 
 ```bash
 # Test your BDI implementation
-python experiments/bdi/experiment-N.py
+uv run python benchmarks/experiments/bdi/experiment-N.py
 
 # Test your LangGraph implementation
-python experiments/langgraph/experiment-N.py
+uv run python benchmarks/experiments/langgraph/experiment-N.py
 
 # Test your CrewAI implementation
-python experiments/crewai/experiment-N.py
+uv run python benchmarks/experiments/crewai/experiment-N.py
 ```
 
 This will run a simple test task and show metrics.
@@ -201,18 +189,21 @@ This will run a simple test task and show metrics.
 Once your implementations are ready, run the official benchmark:
 
 ```bash
-# Run all your experiments
-python -m benchmarks.experiments.run_experiments --participant N
+# Run all frameworks for participant N
+uv run python -m benchmarks.experiments.run_experiments --participant N
 
-# Or run specific framework
-python -m benchmarks.experiments.run_experiments --participant N --framework bdi
+# Run specific framework only
+uv run python -m benchmarks.experiments.run_experiments --participant N --framework bdi
+
+# Run specific task category
+uv run python -m benchmarks.experiments.run_experiments --participant N --framework bdi --category simple
 ```
 
 This will:
 1. Run all 6 benchmark tasks (2 simple, 2 medium, 2 complex)
 2. Collect performance metrics automatically
-3. Generate results in `benchmarks/results/participant-N/`
-4. Create analysis reports
+3. Generate results in `benchmarks/results/participant-N_{timestamp}/`
+4. Save individual task results and summary statistics to JSON files
 
 ## What We Measure
 
