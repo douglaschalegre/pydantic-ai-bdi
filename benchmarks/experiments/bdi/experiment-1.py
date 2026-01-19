@@ -12,11 +12,6 @@ See toy.py in the project root for a complete usage example.
 import sys
 from pathlib import Path
 
-from dotenv import load_dotenv
-
-from antigravity.model import AntigravityModel
-from antigravity.provider import AntigravityProvider
-
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
@@ -25,11 +20,11 @@ import asyncio
 from pydantic_ai.mcp import MCPServerStdio
 from benchmarks.experiments.base_experiment import BaseExperiment
 from bdi.agent import BDI
-from bdi.schemas.desire_schemas import Desire
+from antigravity.model import AntigravityModel
+from antigravity.provider import AntigravityProvider
+from dotenv import load_dotenv
 
 load_dotenv()
-
-
 provider = AntigravityProvider()
 
 
@@ -57,7 +52,7 @@ class BDIExperiment(BaseExperiment):
         self.agent: BDI = None
         self.mcp_servers = []
         self.model = AntigravityModel(
-            "gemini-2.5-flash",
+            "gemini-2.5-flash",  # Using Gemini 2.5 Flash (separate quota, less rate limiting)
             provider=provider,
         )
 
@@ -113,6 +108,12 @@ class BDIExperiment(BaseExperiment):
         # Add servers based on what tools are needed
         self.mcp_servers = [fs_server]
 
+        # TODO: Add other MCP servers as needed:
+        # - mcp-server-git: Git operations
+        # - mcp-server-brave-search: Web search
+        # - mcp-server-postgres: Database access
+        # - Custom MCP servers you create
+
         # ====================================================================
         # Configure the BDI agent
         # ====================================================================
@@ -163,13 +164,18 @@ class BDIExperiment(BaseExperiment):
         # Run BDI cycles within MCP server context
         async with self.agent.run_mcp_servers():
             for cycle_num in range(max_cycles):
+                # Record cycle for metrics
                 metric_collector.record_cycle()
 
                 try:
+                    # Run one BDI cycle
+                    # This executes all the BDI reasoning automatically
                     status = await self.agent.bdi_cycle()
 
+                    # Record step execution
                     metric_collector.record_step(success=True)
 
+                    # Check if agent finished
                     if status in ["stopped", "interrupted"]:
                         # Examine results
                         achieved_desires = [
@@ -210,7 +216,7 @@ class BDIExperiment(BaseExperiment):
                 for d in self.agent.desires
             ],
             "intentions_count": len(self.agent.intentions),
-            "cycles_completed": cycle_num + 1 if 'cycle_num' in locals() else 0,
+            "cycles_completed": cycle_num + 1 if "cycle_num" in locals() else 0,
         }
 
         # Determine success based on achieved desires
@@ -253,7 +259,7 @@ async def main():
     }
 
     print("=" * 80)
-    print(f"Testing BDI Agent")
+    print("Testing BDI Agent")
     print("=" * 80)
     print(f"Task: {task.name}")
     print(f"Goal: {task.goal}")

@@ -66,6 +66,7 @@ dev = [
 
 [project.scripts]
 start = "cli:start"
+cli = "cli:start"
 benchmark-run = "benchmarks.evaluation.runner:main"
 benchmark-analyze = "benchmarks.scripts.analyze_results:main"
 benchmark-viz = "benchmarks.scripts.visualize_results:main"
@@ -76,4 +77,4 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["bdi", "server", "helper", "cli.py"]
+packages = ["bdi", "server", "helper"]
