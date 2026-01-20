@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 
 from antigravity import AntigravityModel, AntigravityProvider
 from benchmarks.experiments.base_experiment import ExperimentMetrics, MetricCollector
+from benchmarks.experiments.crewai.antigravity_llm import AntigravityCrewAILLM
 
 MODEL_NAME = "gemini-2.5-flash"
 
@@ -91,8 +92,9 @@ async def run_experiment(
 
     provider = AntigravityProvider()
     model = AntigravityModel(MODEL_NAME, provider=provider)
+    crewai_llm = AntigravityCrewAILLM(model)
 
-    agent = build_agent(model=model)
+    agent = build_agent(model=crewai_llm)
     if agent is None:
         raise ValueError("build_agent(model) must return a CrewAI crew/agent")
 
