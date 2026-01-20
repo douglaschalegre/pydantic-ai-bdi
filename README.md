@@ -151,12 +151,6 @@ asyncio.run(main())
 uv run python example.py
 ```
 
-## Running the dev server
-
-```bash
-uv run uvicorn server.app:app --reload --port 8000
-```
-
 ## License
 
 This project is open source and available under the MIT license.

@@ -30,7 +30,7 @@ pip install -e ".[benchmark-all]"
 
 ## Installation Options
 
-> **Important**: All installation options include the **BDI Agent Framework** with its core dependencies (pydantic-ai, fastapi, etc.). This is required for running experiments and benchmarks.
+> **Important**: All installation options include the **BDI Agent Framework** with its core dependencies (pydantic-ai, etc.). This is required for running experiments and benchmarks.
 
 ### Base Installation
 
@@ -43,9 +43,8 @@ uv pip install -e .
 **Includes**:
 - **BDI agent framework** (`bdi/`) - *Required for all experiments*
 - Pydantic AI - *BDI's foundation*
-- FastAPI server (`server/`)
 - CLI tools
-- Core dependencies (pydantic-ai, fastapi, uvicorn, python-dotenv, chardet)
+- Core dependencies (pydantic-ai, python-dotenv, chardet)
 
 ### Benchmark Groups
 
@@ -151,7 +150,7 @@ python -c "import crewai; print('CrewAI installed')"
 ### Test Commands
 
 ```bash
-# BDI agent server
+# BDI agent CLI
 start  # or: python -m cli
 
 # Benchmark commands
