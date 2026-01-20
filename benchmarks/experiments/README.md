@@ -88,19 +88,22 @@ uv run python -c "import scipy; print('✓ SciPy')"
 ### 2. Get Your Participant Number
 
 You will be assigned a participant number (e.g., 1, 2, 3...). Use this number for all your experiment files:
-- `bdi/experiment-N.py`
-- `langgraph/experiment-N.py`
-- `crewai/experiment-N.py`
+- `bdi/<task_id>/experiment-N.py`
+- `langgraph/<task_id>/experiment-N.py`
+- `crewai/<task_id>/experiment-N.py`
 
 ### 3. Implement Each Framework
 
 For each framework, copy the TEMPLATE.py file and implement your agent:
 
 ```bash
-# Example for participant 1
-cp experiments/bdi/TEMPLATE.py experiments/bdi/experiment-1.py
-cp experiments/langgraph/TEMPLATE.py experiments/langgraph/experiment-1.py
-cp experiments/crewai/TEMPLATE.py experiments/crewai/experiment-1.py
+# Example for participant 1 (task: simple_file_read)
+mkdir -p experiments/bdi/simple_file_read
+mkdir -p experiments/langgraph/simple_file_read
+mkdir -p experiments/crewai/simple_file_read
+cp experiments/bdi/TEMPLATE.py experiments/bdi/simple_file_read/experiment-1.py
+cp experiments/langgraph/TEMPLATE.py experiments/langgraph/simple_file_read/experiment-1.py
+cp experiments/crewai/TEMPLATE.py experiments/crewai/simple_file_read/experiment-1.py
 ```
 
 Then edit each file to implement your solution.
@@ -109,34 +112,17 @@ Then edit each file to implement your solution.
 
 ### What You Need to Implement
 
-For each framework, you need to implement the `run_task()` method. This method receives:
-
-**Input (task_definition):**
-```python
-{
-    'id': 'simple_file_read',
-    'goal': 'Read the pyproject.toml file and report the number of lines',
-    'initial_context': {'file_path': 'pyproject.toml'},
-    'tools_available': ['read_file', 'list_directory']
-}
-```
-
-**Output (return value):**
-```python
-{
-    'success': True,  # Whether the task succeeded
-    'result': {...},  # Your result data
-    'final_state': {...}  # Final agent state
-}
-```
+For each framework, you need to implement `build_agent(model)`.
+Optional: implement `run_agent(agent, metric_collector)` for custom execution.
+BDI only: you may add `get_mcp_servers(repo_path)` to provide extra MCP servers.
 
 ### What's Provided (Boilerplate)
 
 The templates provide:
-- **Framework initialization** - Basic setup for each framework
+- **Framework initialization** - Minimal setup for each framework
 - **Metric collection** - Automatic tracking of performance metrics
-- **Task execution wrapper** - Standard interface for running tasks
-- **Example structure** - Commented examples of how to use each framework
+- **Execution wrapper** - Standard runner integration
+- **Example structure** - Minimal example aligned to framework docs
 
 ### What You Should Focus On
 
@@ -173,13 +159,13 @@ Each template can be run standalone for testing:
 
 ```bash
 # Test your BDI implementation
-uv run python benchmarks/experiments/bdi/experiment-N.py
+uv run python benchmarks/experiments/bdi/<task_id>/experiment-N.py
 
 # Test your LangGraph implementation
-uv run python benchmarks/experiments/langgraph/experiment-N.py
+uv run python benchmarks/experiments/langgraph/<task_id>/experiment-N.py
 
 # Test your CrewAI implementation
-uv run python benchmarks/experiments/crewai/experiment-N.py
+uv run python benchmarks/experiments/crewai/<task_id>/experiment-N.py
 ```
 
 This will run a simple test task and show metrics.
@@ -190,17 +176,14 @@ Once your implementations are ready, run the official benchmark:
 
 ```bash
 # Run all frameworks for participant N
-uv run python -m benchmarks.experiments.run_experiments --participant N
+uv run python -m benchmarks.experiments.run_experiments --participant N --task-id simple_file_read
 
 # Run specific framework only
-uv run python -m benchmarks.experiments.run_experiments --participant N --framework bdi
-
-# Run specific task category
-uv run python -m benchmarks.experiments.run_experiments --participant N --framework bdi --category simple
+uv run python -m benchmarks.experiments.run_experiments --participant N --framework bdi --task-id simple_file_read
 ```
 
 This will:
-1. Run all 6 benchmark tasks (2 simple, 2 medium, 2 complex)
+1. Run the task-specific experiment for each framework
 2. Collect performance metrics automatically
 3. Generate results in `benchmarks/results/participant-N_{timestamp}/`
 4. Save individual task results and summary statistics to JSON files

@@ -13,14 +13,15 @@ Implement your CrewAI multi-agent system here.
 
 2. Copy the template:
    ```bash
-   cp TEMPLATE.py experiment-N.py  # Replace N with your participant number
+   mkdir -p simple_file_read
+   cp TEMPLATE.py simple_file_read/experiment-N.py  # Replace N with your participant number
    ```
 
-3. Edit `experiment-N.py` and implement your multi-agent crew
+3. Edit `simple_file_read/experiment-N.py` and implement your multi-agent crew
 
 4. Test your implementation:
    ```bash
-   python experiment-N.py
+   python simple_file_read/experiment-N.py
    ```
 
 ## What to Implement

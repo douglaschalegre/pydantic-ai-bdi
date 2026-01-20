@@ -1,14 +1,10 @@
-"""BDI experiment template (participant-facing).
-
-Copy to: benchmarks/experiments/bdi/<task_id>/experiment-<participant>.py
-"""
+"""BDI participant experiment for simple_file_read."""
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import List
-
-import sys
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(REPO_ROOT))
@@ -20,7 +16,6 @@ from benchmarks.experiments.bdi import runner
 
 
 def build_agent(model, mcp_servers: List[MCPServerStdio] | None = None) -> BDI:
-    """Return a configured BDI agent for your task."""
     desires = [
         "Read the pyproject.toml file and report the number of lines."
     ]
@@ -50,7 +45,6 @@ def get_mcp_servers(repo_path: str):
 
 
 async def run_agent(agent, metric_collector):
-    max_cycles = 1
     max_cycles = 100
     status = "unknown"
     async with agent.run_mcp_servers():

@@ -102,20 +102,14 @@ benchmarks/
 
 ## Usage
 
-### Running Benchmarks
+### Running Participant Experiments
 
 ```bash
-# Run all benchmarks
-python -m benchmarks.evaluation.runner --all
+# Run all frameworks for a task
+uv run python -m benchmarks.experiments.run_experiments --participant 1 --task-id simple_file_read
 
-# Run specific framework
-python -m benchmarks.evaluation.runner --framework bdi
-
-# Run specific task category
-python -m benchmarks.evaluation.runner --category simple
-
-# Run with specific model
-python -m benchmarks.evaluation.runner --model gpt-4
+# Run a specific framework for a task
+uv run python -m benchmarks.experiments.run_experiments --participant 1 --framework bdi --task-id simple_file_read
 ```
 
 ### Analyzing Results

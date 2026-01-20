@@ -1,7 +1,4 @@
-"""CrewAI experiment template (participant-facing).
-
-Copy to: benchmarks/experiments/crewai/<task_id>/experiment-<participant>.py
-"""
+"""CrewAI participant experiment for simple_file_read."""
 
 from __future__ import annotations
 
@@ -17,7 +14,6 @@ from benchmarks.experiments.crewai import runner
 
 
 def build_agent(model):
-    """Build and return your CrewAI crew."""
     planner = Agent(
         role="Planner",
         goal="Plan the work",

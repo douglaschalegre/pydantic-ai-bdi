@@ -1,7 +1,4 @@
-"""LangGraph experiment template (participant-facing).
-
-Copy to: benchmarks/experiments/langgraph/<task_id>/experiment-<participant>.py
-"""
+"""LangGraph participant experiment for simple_file_read."""
 
 from __future__ import annotations
 
@@ -24,8 +21,6 @@ class AgentState(TypedDict):
 
 
 def build_agent(model):
-    """Build and return your LangGraph graph."""
-
     def plan(state: AgentState) -> AgentState:
         state["steps"] += 1
         return state

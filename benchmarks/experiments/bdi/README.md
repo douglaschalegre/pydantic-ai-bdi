@@ -15,20 +15,20 @@ This evaluates the **BDI architecture as designed** against other frameworks.
 
 1. Copy the template:
    ```bash
-   cp TEMPLATE.py experiment-N.py  # Replace N with your participant number
+   mkdir -p simple_file_read
+   cp TEMPLATE.py simple_file_read/experiment-N.py  # Replace N with your participant number
    ```
 
-2. Edit `experiment-N.py` and configure the BDI agent in `run_task()`
+2. Edit `simple_file_read/experiment-N.py` and implement `build_agent(model)`
 
 3. Test your configuration:
    ```bash
-   python experiment-N.py
+   python simple_file_read/experiment-N.py
    ```
 
 ## What You Configure
 
 The BDI agent handles all reasoning automatically. You configure:
-- **Model selection**: Which LLM to use (gpt-4, gpt-3.5-turbo, etc.)
 - **Initial desires**: Starting goals (or use task goal)
 - **Initial intentions**: Optional starting plan steps
 - **Tools**: What functions the agent can call
