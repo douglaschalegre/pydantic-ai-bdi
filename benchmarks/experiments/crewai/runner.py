@@ -6,7 +6,6 @@ import asyncio
 import importlib.util
 import inspect
 import json
-import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -16,9 +15,10 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from dotenv import load_dotenv
 
+from antigravity import AntigravityModel, AntigravityProvider
 from benchmarks.experiments.base_experiment import ExperimentMetrics, MetricCollector
 
-MODEL_NAME = "gpt-4o-mini"
+MODEL_NAME = "gemini-2.5-flash"
 
 
 def _repo_root() -> Path:
@@ -60,10 +60,14 @@ def _collect_code_metrics(metrics: ExperimentMetrics, participant_path: Path) ->
     except Exception:
         return
     metrics.lines_of_code = len(content.splitlines())
-    metrics.functions_defined = sum(1 for line in content.splitlines() if line.lstrip().startswith("def "))
+    metrics.functions_defined = sum(
+        1 for line in content.splitlines() if line.lstrip().startswith("def ")
+    )
 
 
-async def _default_run_agent(agent: Any, metric_collector: MetricCollector) -> Dict[str, Any]:
+async def _default_run_agent(
+    agent: Any, metric_collector: MetricCollector
+) -> Dict[str, Any]:
     if hasattr(agent, "kickoff"):
         result = agent.kickoff()
     else:
@@ -85,8 +89,8 @@ async def run_experiment(
     if not callable(build_agent):
         raise AttributeError("Participant file must define build_agent(model)")
 
-    os.environ["OPENAI_MODEL_NAME"] = MODEL_NAME
-    model = MODEL_NAME
+    provider = AntigravityProvider()
+    model = AntigravityModel(MODEL_NAME, provider=provider)
 
     agent = build_agent(model=model)
     if agent is None:
