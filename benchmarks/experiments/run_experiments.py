@@ -34,7 +34,6 @@ from benchmarks.tasks import (
     COMPLEX_TASKS,
     TaskDefinition,
 )
-from benchmarks.tasks.validators import run_validator
 
 
 class ExperimentRunner:
@@ -51,7 +50,9 @@ class ExperimentRunner:
 
         # Create participant results directory
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.participant_dir = self.output_dir / f"participant-{participant_id}_{timestamp}"
+        self.participant_dir = (
+            self.output_dir / f"participant-{participant_id}_{timestamp}"
+        )
         self.participant_dir.mkdir(parents=True, exist_ok=True)
 
     def load_participant_experiment(self, framework: str):
@@ -63,7 +64,9 @@ class ExperimentRunner:
         Returns:
             Experiment class instance
         """
-        experiment_file = self.experiments_dir / framework / f"experiment-{self.participant_id}.py"
+        experiment_file = (
+            self.experiments_dir / framework / f"experiment-{self.participant_id}.py"
+        )
 
         if not experiment_file.exists():
             raise FileNotFoundError(
@@ -73,17 +76,16 @@ class ExperimentRunner:
 
         # Load the module dynamically
         spec = importlib.util.spec_from_file_location(
-            f"{framework}_experiment_{self.participant_id}",
-            experiment_file
+            f"{framework}_experiment_{self.participant_id}", experiment_file
         )
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
 
         # Get the experiment class (convention: BDIExperiment, LangGraphExperiment, CrewAIExperiment)
         class_names = {
-            'bdi': 'BDIExperiment',
-            'langgraph': 'LangGraphExperiment',
-            'crewai': 'CrewAIExperiment',
+            "bdi": "BDIExperiment",
+            "langgraph": "LangGraphExperiment",
+            "crewai": "CrewAIExperiment",
         }
 
         experiment_class = getattr(module, class_names[framework])
@@ -96,17 +98,17 @@ class ExperimentRunner:
     ) -> Dict[str, Any]:
         """Run a single task with participant's agent."""
 
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print(f"Task: {task.name} ({task.id})")
         print(f"Category: {task.category.value}")
-        print(f"{'='*80}\n")
+        print(f"{'=' * 80}\n")
 
         # Prepare task definition
         task_def = {
-            'id': task.id,
-            'goal': task.goal,
-            'initial_context': task.initial_context,
-            'tools_available': task.tools_available,
+            "id": task.id,
+            "goal": task.goal,
+            "initial_context": task.initial_context,
+            "tools_available": task.tools_available,
         }
 
         try:
@@ -118,31 +120,31 @@ class ExperimentRunner:
             # Note: We'd need access to execution result for full validation
             # For now, we trust the experiment's success flag
 
-            print(f"\n✓ Task completed")
+            print("\n✓ Task completed")
             print(f"  Success: {metrics.task_success}")
             print(f"  Time: {metrics.execution_time_seconds:.2f}s")
             print(f"  Steps: {metrics.steps_executed}")
             print(f"  Cycles: {metrics.cycles_completed}")
 
             return {
-                'task_id': task.id,
-                'success': metrics.task_success,
-                'metrics': metrics.to_dict(),
+                "task_id": task.id,
+                "success": metrics.task_success,
+                "metrics": metrics.to_dict(),
             }
 
         except Exception as e:
             print(f"\n❌ Task failed with error: {e}")
             # Even on error, try to return partial metrics if available
             result = {
-                'task_id': task.id,
-                'success': False,
-                'error': str(e),
+                "task_id": task.id,
+                "success": False,
+                "error": str(e),
             }
 
             # Try to get partial metrics from the experiment
-            if hasattr(experiment, 'metrics') and experiment.metrics:
-                result['partial_metrics'] = experiment.metrics.to_dict()
-                print(f"  Captured partial metrics before failure")
+            if hasattr(experiment, "metrics") and experiment.metrics:
+                result["partial_metrics"] = experiment.metrics.to_dict()
+                print("  Captured partial metrics before failure")
 
             return result
 
@@ -153,11 +155,11 @@ class ExperimentRunner:
     ) -> Dict[str, Any]:
         """Run all tasks for a specific framework."""
 
-        print(f"\n{'#'*80}")
+        print(f"\n{'#' * 80}")
         print(f"# Framework: {framework.upper()}")
         print(f"# Participant: {self.participant_id}")
         print(f"# Tasks: {len(tasks)}")
-        print(f"{'#'*80}\n")
+        print(f"{'#' * 80}\n")
 
         # Load participant's experiment
         try:
@@ -165,10 +167,10 @@ class ExperimentRunner:
         except Exception as e:
             print(f"❌ Failed to load experiment: {e}")
             return {
-                'framework': framework,
-                'participant_id': self.participant_id,
-                'error': str(e),
-                'tasks': [],
+                "framework": framework,
+                "participant_id": self.participant_id,
+                "error": str(e),
+                "tasks": [],
             }
 
         # Run all tasks
@@ -179,37 +181,38 @@ class ExperimentRunner:
 
             # Save individual result
             result_file = self.participant_dir / f"{framework}_{task.id}.json"
-            with open(result_file, 'w') as f:
+            with open(result_file, "w") as f:
                 json.dump(result, f, indent=2)
 
         # Calculate summary statistics
-        successful = sum(1 for r in results if r.get('success', False))
+        successful = sum(1 for r in results if r.get("success", False))
         total_time = sum(
-            r.get('metrics', {}).get('execution_time_seconds', 0)
-            for r in results
+            r.get("metrics", {}).get("execution_time_seconds", 0) for r in results
         )
 
         summary = {
-            'framework': framework,
-            'participant_id': self.participant_id,
-            'total_tasks': len(results),
-            'successful_tasks': successful,
-            'failed_tasks': len(results) - successful,
-            'success_rate': successful / len(results) if results else 0,
-            'total_time_seconds': total_time,
-            'tasks': results,
+            "framework": framework,
+            "participant_id": self.participant_id,
+            "total_tasks": len(results),
+            "successful_tasks": successful,
+            "failed_tasks": len(results) - successful,
+            "success_rate": successful / len(results) if results else 0,
+            "total_time_seconds": total_time,
+            "tasks": results,
         }
 
         # Save framework summary
         summary_file = self.participant_dir / f"{framework}_summary.json"
-        with open(summary_file, 'w') as f:
+        with open(summary_file, "w") as f:
             json.dump(summary, f, indent=2)
 
-        print(f"\n{'#'*80}")
+        print(f"\n{'#' * 80}")
         print(f"# {framework.upper()} Complete")
-        print(f"# Success rate: {successful}/{len(results)} ({summary['success_rate']:.0%})")
+        print(
+            f"# Success rate: {successful}/{len(results)} ({summary['success_rate']:.0%})"
+        )
         print(f"# Total time: {total_time:.2f}s")
-        print(f"{'#'*80}\n")
+        print(f"{'#' * 80}\n")
 
         return summary
 
@@ -223,15 +226,15 @@ class ExperimentRunner:
         # Determine which tasks to run
         if task_category:
             category_map = {
-                'simple': SIMPLE_TASKS,
-                'medium': MEDIUM_TASKS,
-                'complex': COMPLEX_TASKS,
+                "simple": SIMPLE_TASKS,
+                "medium": MEDIUM_TASKS,
+                "complex": COMPLEX_TASKS,
             }
             tasks = category_map.get(task_category.lower(), ALL_TASKS)
         else:
             tasks = ALL_TASKS
 
-        print(f"Experiment Configuration:")
+        print("Experiment Configuration:")
         print(f"  Participant: {self.participant_id}")
         print(f"  Frameworks: {', '.join(frameworks)}")
         print(f"  Tasks: {len(tasks)}")
@@ -247,13 +250,13 @@ class ExperimentRunner:
 
         # Save combined results
         combined_file = self.participant_dir / "all_frameworks_summary.json"
-        with open(combined_file, 'w') as f:
+        with open(combined_file, "w") as f:
             json.dump(all_results, f, indent=2)
 
         # Print final summary
-        print(f"\n{'#'*80}")
-        print(f"# All Experiments Complete")
-        print(f"{'#'*80}")
+        print(f"\n{'#' * 80}")
+        print("# All Experiments Complete")
+        print(f"{'#' * 80}")
         print(f"Participant: {self.participant_id}")
         print()
         for framework, results in all_results.items():
@@ -262,47 +265,47 @@ class ExperimentRunner:
             print(f"  Time: {results.get('total_time_seconds', 0):.2f}s")
         print()
         print(f"Results saved to: {self.participant_dir}")
-        print(f"{'#'*80}\n")
+        print(f"{'#' * 80}\n")
 
 
 async def main():
     parser = argparse.ArgumentParser(description="Run participant experiments")
 
     parser.add_argument(
-        '--participant',
-        '-p',
+        "--participant",
+        "-p",
         type=int,
         required=True,
-        help="Participant number (e.g., 1, 2, 3)"
+        help="Participant number (e.g., 1, 2, 3)",
     )
 
     parser.add_argument(
-        '--framework',
-        '-f',
-        choices=['bdi', 'langgraph', 'crewai', 'all'],
-        default='all',
-        help="Framework to run (default: all)"
+        "--framework",
+        "-f",
+        choices=["bdi", "langgraph", "crewai", "all"],
+        default="all",
+        help="Framework to run (default: all)",
     )
 
     parser.add_argument(
-        '--category',
-        '-c',
-        choices=['simple', 'medium', 'complex'],
-        help="Task category to run (default: all)"
+        "--category",
+        "-c",
+        choices=["simple", "medium", "complex"],
+        help="Task category to run (default: all)",
     )
 
     parser.add_argument(
-        '--output',
-        '-o',
-        default='benchmarks/results',
-        help="Output directory (default: benchmarks/results)"
+        "--output",
+        "-o",
+        default="benchmarks/results",
+        help="Output directory (default: benchmarks/results)",
     )
 
     args = parser.parse_args()
 
     # Determine frameworks to run
-    if args.framework == 'all':
-        frameworks = ['bdi', 'langgraph', 'crewai']
+    if args.framework == "all":
+        frameworks = ["bdi", "langgraph", "crewai"]
     else:
         frameworks = [args.framework]
 
@@ -319,5 +322,5 @@ async def main():
     )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(main())
