@@ -18,20 +18,15 @@ This benchmarking framework evaluates the Pydantic AI BDI (Belief-Desire-Intenti
 **Simple Tasks** (1-3 steps, <2 minutes expected)
 - File operations (read, write, search)
 - Basic data transformations
-- Simple API calls
 - Straightforward calculations
 
 **Medium Tasks** (4-10 steps, 2-10 minutes expected)
 - Multi-file analysis
-- Data pipeline creation
-- API integration with processing
-- Code refactoring tasks
+- Data extraction and summarization
 
 **Complex Tasks** (10+ steps, >10 minutes expected)
 - Multi-component system integration
 - Research and implementation tasks
-- Debugging and fixing complex issues
-- End-to-end feature development
 
 ## Metrics Collected
 
