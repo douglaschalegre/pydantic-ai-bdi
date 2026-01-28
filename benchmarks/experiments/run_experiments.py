@@ -11,19 +11,30 @@ Usage:
 
 import argparse
 import asyncio
+import importlib
 import json
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
 
+from benchmarks.tasks import ALL_TASKS
+
 ROOT_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT_DIR))
 
-from benchmarks.tasks import ALL_TASKS
-from benchmarks.experiments.bdi import runner as bdi_runner
-from benchmarks.experiments.langgraph import runner as langgraph_runner
-from benchmarks.experiments.crewai import runner as crewai_runner
+
+RUNNER_MODULES = {
+    "bdi": "benchmarks.experiments.bdi.runner",
+    "langgraph": "benchmarks.experiments.langgraph.runner",
+    "crewai": "benchmarks.experiments.crewai.runner",
+}
+
+
+def _load_runner(framework: str):
+    module_path = RUNNER_MODULES[framework]
+    return importlib.import_module(module_path)
 
 
 class ExperimentRunner:
@@ -79,13 +90,10 @@ class ExperimentRunner:
 
         experiment_path = self.resolve_experiment_path(framework, task_id)
 
-        runner = {
-            "bdi": bdi_runner,
-            "langgraph": langgraph_runner,
-            "crewai": crewai_runner,
-        }[framework]
+        runner = None
 
         try:
+            runner = _load_runner(framework)
             result = await runner.run_experiment(
                 participant_path=experiment_path,
                 experiment_id=f"participant-{self.participant_id}",
@@ -93,28 +101,47 @@ class ExperimentRunner:
                 participant_id=str(self.participant_id),
             )
 
-            metrics = result.get("metrics", {})
             print("\n✓ Task completed")
-            print(f"  Success: {metrics.get('task_success')}")
-            print(f"  Time: {metrics.get('execution_time_seconds', 0):.2f}s")
-            print(f"  Steps: {metrics.get('steps_executed', 0)}")
-            print(f"  Cycles: {metrics.get('cycles_completed', 0)}")
+            print(f"  Success: {result.get('success')}")
+            print(f"  Time: {result.get('completion_time_seconds', 0):.2f}s")
+            print(f"  Steps: {result.get('step_count', 0)}")
+            print(f"  Cycles: {result.get('cycle_count', 0)}")
 
-            return {
-                "task_id": task_id,
-                "task_name": task.name,
-                "success": result.get("success", False),
-                "metrics": metrics,
-                "result": result.get("result"),
-            }
+            return result
 
         except Exception as exc:
             print(f"\n❌ Task failed with error: {exc}")
+            model_name = (
+                getattr(runner, "MODEL_NAME", "unknown") if runner else "unknown"
+            )
             return {
                 "task_id": task_id,
-                "task_name": task.name,
+                "framework": framework,
+                "run_id": f"participant-{self.participant_id}",
                 "success": False,
-                "error": str(exc),
+                "success_score": 0.0,
+                "completion_time_seconds": 0.0,
+                "error_message": str(exc),
+                "step_count": 0,
+                "cycle_count": 0,
+                "retry_count": 0,
+                "human_intervention_count": 0,
+                "token_usage_input": None,
+                "token_usage_output": None,
+                "api_call_count": 0,
+                "estimated_cost_usd": 0.0,
+                "criteria_met": [],
+                "criteria_failed": [],
+                "partial_criteria": {},
+                "execution_log": "",
+                "final_state": {"error": str(exc)},
+                "model_name": model_name,
+                "framework_version": "unknown",
+                "git_commit": None,
+                "timestamp": time.time(),
+                "lines_of_code": None,
+                "functions_defined": None,
+                "complexity_score": None,
             }
 
     async def run_framework(
@@ -136,7 +163,7 @@ class ExperimentRunner:
         with open(result_file, "w") as f:
             json.dump(result, f, indent=2)
 
-        total_time = result.get("metrics", {}).get("execution_time_seconds", 0)
+        total_time = result.get("completion_time_seconds", 0)
         summary = {
             "framework": framework,
             "participant_id": self.participant_id,

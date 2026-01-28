@@ -6,7 +6,13 @@ Handles authentication and provides an HTTP client for the Antigravity API.
 
 import httpx
 
-from .auth import TokenData, ensure_valid_tokens, is_token_expired, refresh_access_token, save_tokens
+from .auth import (
+    TokenData,
+    ensure_valid_tokens,
+    is_token_expired,
+    refresh_access_token,
+    save_tokens,
+)
 from .constants import (
     ANTIGRAVITY_ENDPOINT,
     ANTIGRAVITY_HEADERS,
@@ -31,6 +37,7 @@ class AntigravityProvider:
         self,
         tokens: TokenData | None = None,
         header_style: HeaderStyle = "antigravity",
+        usage_tracker: object | None = None,
     ):
         """
         Initialize the Antigravity provider.
@@ -41,6 +48,7 @@ class AntigravityProvider:
         """
         self._tokens = tokens
         self._header_style = header_style
+        self.usage_tracker = usage_tracker
         self._client: httpx.AsyncClient | None = None
         self._initialized = False
 
@@ -81,7 +89,9 @@ class AntigravityProvider:
                 self._tokens.refresh_token
             )
             self._tokens.access_token = access_token
-            self._tokens.expires_at = datetime.now(timezone.utc).timestamp() + expires_in
+            self._tokens.expires_at = (
+                datetime.now(timezone.utc).timestamp() + expires_in
+            )
             save_tokens(self._tokens)
 
         return self._tokens
@@ -146,6 +156,7 @@ class AntigravityProvider:
 
 async def create_provider(
     header_style: HeaderStyle = "antigravity",
+    usage_tracker: object | None = None,
 ) -> AntigravityProvider:
     """
     Factory function to create an initialized Antigravity provider.
@@ -156,6 +167,8 @@ async def create_provider(
         async with create_provider() as provider:
             ...
     """
-    provider = AntigravityProvider(header_style=header_style)
+    provider = AntigravityProvider(
+        header_style=header_style, usage_tracker=usage_tracker
+    )
     await provider.initialize()
     return provider

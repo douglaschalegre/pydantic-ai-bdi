@@ -10,7 +10,7 @@ from datetime import datetime
 
 from pydantic_ai import Agent
 from helper.util import bcolors
-from bdi.schemas import BeliefSet, Desire, generate_desire_id, BeliefExtractionResult
+from bdi.schemas import BeliefSet, Desire, BeliefExtractionResult, generate_desire_id
 from bdi.logging import log_states
 from bdi.planning import generate_intentions_from_desires
 from bdi.execution import execute_intentions

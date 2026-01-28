@@ -2,10 +2,12 @@
 
 from .collector import MetricsCollector, BenchmarkMetricsAggregator
 from .analyzer import BenchmarkAnalyzer, StatisticalComparison
+from .usage_tracker import UsageTracker
 
 __all__ = [
-    'MetricsCollector',
-    'BenchmarkMetricsAggregator',
-    'BenchmarkAnalyzer',
-    'StatisticalComparison',
+    "MetricsCollector",
+    "BenchmarkMetricsAggregator",
+    "BenchmarkAnalyzer",
+    "StatisticalComparison",
+    "UsageTracker",
 ]

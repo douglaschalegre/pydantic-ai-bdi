@@ -7,11 +7,9 @@ import importlib.util
 import inspect
 import json
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, Optional
-
-REPO_ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(REPO_ROOT))
 
 from dotenv import load_dotenv
 from pydantic_ai.mcp import MCPServerStdio
@@ -19,6 +17,12 @@ from pydantic_ai.mcp import MCPServerStdio
 from antigravity import AntigravityModel, AntigravityProvider
 from bdi.agent import BDI
 from benchmarks.experiments.base_experiment import ExperimentMetrics, MetricCollector
+from benchmarks.metrics.usage_tracker import UsageTracker
+from benchmarks.tasks import TaskResult
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(REPO_ROOT))
+
 
 MODEL_NAME = "gemini-2.5-flash"
 
@@ -62,7 +66,54 @@ def _collect_code_metrics(metrics: ExperimentMetrics, participant_path: Path) ->
     except Exception:
         return
     metrics.lines_of_code = len(content.splitlines())
-    metrics.functions_defined = sum(1 for line in content.splitlines() if line.lstrip().startswith("def "))
+    metrics.functions_defined = sum(
+        1 for line in content.splitlines() if line.lstrip().startswith("def ")
+    )
+
+
+def _build_task_result(
+    *,
+    task_id: str,
+    run_id: str,
+    model_name: str,
+    metrics: ExperimentMetrics,
+    token_usage_input: Optional[int],
+    token_usage_output: Optional[int],
+    api_call_count: int,
+    result: Any,
+    error_message: Optional[str] = None,
+) -> Dict[str, Any]:
+    safe_result = _safe_json_result(result)
+    final_state = {"result": safe_result} if safe_result is not None else {}
+    return TaskResult(
+        task_id=task_id,
+        framework=metrics.framework,
+        run_id=run_id,
+        success=metrics.task_success,
+        success_score=1.0 if metrics.task_success else 0.0,
+        completion_time_seconds=metrics.execution_time_seconds,
+        error_message=error_message,
+        step_count=metrics.steps_executed,
+        cycle_count=metrics.cycles_completed,
+        retry_count=metrics.retries_attempted,
+        human_intervention_count=0,
+        token_usage_input=token_usage_input,
+        token_usage_output=token_usage_output,
+        api_call_count=api_call_count,
+        estimated_cost_usd=0.0,
+        criteria_met=[],
+        criteria_failed=[],
+        partial_criteria={},
+        execution_log="",
+        final_state=final_state,
+        model_name=model_name,
+        framework_version="unknown",
+        git_commit=None,
+        timestamp=time.time(),
+        lines_of_code=metrics.lines_of_code or None,
+        functions_defined=metrics.functions_defined or None,
+        complexity_score=metrics.complexity_score if metrics.complexity_score else None,
+    ).dict()
 
 
 def _default_mcp_servers(repo_path: Path) -> list[MCPServerStdio]:
@@ -79,7 +130,9 @@ def _resolve_mcp_servers(module, repo_path: Path) -> list[MCPServerStdio]:
     return servers
 
 
-async def _default_run_agent(agent: BDI, metric_collector: MetricCollector) -> Dict[str, Any]:
+async def _default_run_agent(
+    agent: BDI, metric_collector: MetricCollector
+) -> Dict[str, Any]:
     status = "unknown"
     async with agent.run_mcp_servers():
         while True:
@@ -106,7 +159,8 @@ async def run_experiment(
     if not callable(build_agent):
         raise AttributeError("Participant file must define build_agent(model)")
 
-    provider = AntigravityProvider()
+    usage_tracker = UsageTracker()
+    provider = AntigravityProvider(usage_tracker=usage_tracker)
     model = AntigravityModel(MODEL_NAME, provider=provider)
     mcp_servers = _resolve_mcp_servers(module, repo_path)
 
@@ -150,12 +204,17 @@ async def run_experiment(
             metrics.log_event("error", {"message": str(exc)})
             raise
 
-    return {
-        "task_id": task_id,
-        "success": metrics.task_success,
-        "metrics": metrics.to_dict(),
-        "result": _safe_json_result(result),
-    }
+    usage_snapshot = usage_tracker.snapshot()
+    return _build_task_result(
+        task_id=task_id,
+        run_id=experiment_id,
+        model_name=MODEL_NAME,
+        metrics=metrics,
+        token_usage_input=usage_snapshot["input_tokens"],
+        token_usage_output=usage_snapshot["output_tokens"],
+        api_call_count=usage_snapshot["api_calls"],
+        result=result,
+    )
 
 
 def main(participant_path: str) -> None:
@@ -171,12 +230,12 @@ def main(participant_path: str) -> None:
             task_id=task_id,
             participant_id=participant_id,
         )
-        metrics = result.get("metrics", {})
+        metrics = result
         print("\nResults:")
-        print(f"  Success: {metrics.get('task_success')}")
-        print(f"  Execution time: {metrics.get('execution_time_seconds', 0):.2f}s")
-        print(f"  Steps: {metrics.get('steps_executed', 0)}")
-        print(f"  Cycles: {metrics.get('cycles_completed', 0)}")
+        print(f"  Success: {metrics.get('success')}")
+        print(f"  Execution time: {metrics.get('completion_time_seconds', 0):.2f}s")
+        print(f"  Steps: {metrics.get('step_count', 0)}")
+        print(f"  Cycles: {metrics.get('cycle_count', 0)}")
 
     asyncio.run(_run())
 

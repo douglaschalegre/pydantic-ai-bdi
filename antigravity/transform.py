@@ -251,7 +251,7 @@ def messages_to_antigravity(
 def antigravity_to_response(
     response_data: dict[str, Any],
     model_name: str,
-) -> tuple[list[TextPart | ToolCallPart], Usage]:
+) -> tuple[list[TextPart | ToolCallPart], Usage, bool]:
     """
     Convert Antigravity API response to pydantic-ai format.
 
@@ -291,14 +291,21 @@ def antigravity_to_response(
                 )
 
     # Extract usage metadata
-    usage_meta = response.get("usageMetadata", {})
+    usage_meta = response.get("usageMetadata") or {}
+    usage_available = False
+    if isinstance(usage_meta, dict):
+        usage_available = (
+            "promptTokenCount" in usage_meta
+            or "candidatesTokenCount" in usage_meta
+        )
+
     usage = Usage(
         input_tokens=usage_meta.get("promptTokenCount", 0),
         output_tokens=usage_meta.get("candidatesTokenCount", 0),
         requests=1,
     )
 
-    return parts, usage
+    return parts, usage, usage_available
 
 
 def parse_sse_event(line: str) -> dict[str, Any] | None:

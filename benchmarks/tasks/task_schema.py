@@ -7,6 +7,7 @@ from enum import Enum
 
 class TaskCategory(str, Enum):
     """Task complexity categories."""
+
     SIMPLE = "simple"
     MEDIUM = "medium"
     COMPLEX = "complex"
@@ -14,6 +15,7 @@ class TaskCategory(str, Enum):
 
 class TaskDomain(str, Enum):
     """Task domain categories."""
+
     FILE_OPS = "file_operations"
     DATA_PROCESSING = "data_processing"
     CODE_ANALYSIS = "code_analysis"
@@ -29,7 +31,9 @@ class SuccessCriteria(BaseModel):
     description: str = Field(description="Human-readable success condition")
     validator: str = Field(description="Name of validation function to call")
     validator_params: Dict[str, Any] = Field(default_factory=dict)
-    required: bool = Field(default=True, description="Whether this criterion is required")
+    required: bool = Field(
+        default=True, description="Whether this criterion is required"
+    )
     weight: float = Field(default=1.0, description="Weight for partial success scoring")
 
 
@@ -49,12 +53,10 @@ class TaskDefinition(BaseModel):
     # Task specification
     goal: str = Field(description="High-level goal statement")
     initial_context: Dict[str, Any] = Field(
-        default_factory=dict,
-        description="Context provided to agent at start"
+        default_factory=dict, description="Context provided to agent at start"
     )
     tools_available: List[str] = Field(
-        default_factory=list,
-        description="List of tool names available for this task"
+        default_factory=list, description="List of tool names available for this task"
     )
 
     # Success evaluation
@@ -72,20 +74,15 @@ class TaskDefinition(BaseModel):
 
     # Setup and teardown
     setup_function: Optional[str] = Field(
-        default=None,
-        description="Name of function to call before task"
+        default=None, description="Name of function to call before task"
     )
     teardown_function: Optional[str] = Field(
-        default=None,
-        description="Name of function to call after task"
+        default=None, description="Name of function to call after task"
     )
 
     # Metadata for analysis
     difficulty_score: float = Field(
-        default=5.0,
-        ge=1.0,
-        le=10.0,
-        description="Subjective difficulty rating"
+        default=5.0, ge=1.0, le=10.0, description="Subjective difficulty rating"
     )
     requires_external_api: bool = Field(default=False)
     requires_file_system: bool = Field(default=True)
@@ -113,8 +110,8 @@ class TaskResult(BaseModel):
     human_intervention_count: int
 
     # Resource metrics
-    token_usage_input: int
-    token_usage_output: int
+    token_usage_input: Optional[int] = None
+    token_usage_output: Optional[int] = None
     api_call_count: int
     estimated_cost_usd: float
 
@@ -132,6 +129,11 @@ class TaskResult(BaseModel):
     framework_version: str
     git_commit: Optional[str] = None
     timestamp: float
+
+    # Usability metrics (optional)
+    lines_of_code: Optional[int] = None
+    functions_defined: Optional[int] = None
+    complexity_score: Optional[float] = None
 
 
 class BenchmarkRun(BaseModel):

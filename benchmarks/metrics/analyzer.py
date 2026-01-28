@@ -10,6 +10,7 @@ from collections import defaultdict
 
 try:
     import scipy.stats as stats
+
     SCIPY_AVAILABLE = True
 except ImportError:
     SCIPY_AVAILABLE = False
@@ -81,18 +82,18 @@ class BenchmarkAnalyzer:
         """Load all result files from results directory."""
         for file in self.results_dir.glob("*.json"):
             try:
-                with open(file, 'r') as f:
+                with open(file, "r") as f:
                     data = json.load(f)
 
-                    if 'task_results' in data:
+                    if "task_results" in data:
                         # Benchmark run file
-                        for result in data['task_results']:
+                        for result in data["task_results"]:
                             self.task_results.append(result)
-                            self.framework_results[result['framework']].append(result)
+                            self.framework_results[result["framework"]].append(result)
                     else:
                         # Individual result file
                         self.task_results.append(data)
-                        self.framework_results[data['framework']].append(data)
+                        self.framework_results[data["framework"]].append(data)
             except Exception as e:
                 print(f"Error loading {file}: {e}")
 
@@ -103,52 +104,70 @@ class BenchmarkAnalyzer:
         if not results:
             return 0.0
 
-        successful = sum(1 for r in results if r.get('success', False))
+        successful = sum(1 for r in results if r.get("success", False))
         return successful / len(results)
 
-    def get_metric_statistics(self, metric_name: str, framework: Optional[str] = None) -> Dict[str, float]:
+    def get_metric_statistics(
+        self, metric_name: str, framework: Optional[str] = None
+    ) -> Dict[str, float]:
         """Get statistics for a specific metric."""
         results = self.framework_results[framework] if framework else self.task_results
 
-        values = [r.get(metric_name, 0) for r in results if metric_name in r]
+        raw_values = [r.get(metric_name) for r in results if metric_name in r]
+        values = [v for v in raw_values if isinstance(v, (int, float))]
 
         if not values:
             return {}
 
         stats_dict = {
-            'count': len(values),
-            'mean': statistics.mean(values),
-            'median': statistics.median(values),
-            'min': min(values),
-            'max': max(values),
+            "count": len(values),
+            "mean": statistics.mean(values),
+            "median": statistics.median(values),
+            "min": min(values),
+            "max": max(values),
         }
 
         if len(values) > 1:
-            stats_dict['std'] = statistics.stdev(values)
-            stats_dict['variance'] = statistics.variance(values)
+            stats_dict["std"] = statistics.stdev(values)
+            stats_dict["variance"] = statistics.variance(values)
 
         if len(values) >= 2:
             # Confidence interval (approximation using normal distribution)
-            mean = stats_dict['mean']
-            std = stats_dict.get('std', 0)
+            mean = stats_dict["mean"]
+            std = stats_dict.get("std", 0)
             n = len(values)
-            margin = 1.96 * (std / (n ** 0.5))  # 95% CI
-            stats_dict['ci_lower'] = mean - margin
-            stats_dict['ci_upper'] = mean + margin
+            margin = 1.96 * (std / (n**0.5))  # 95% CI
+            stats_dict["ci_lower"] = mean - margin
+            stats_dict["ci_upper"] = mean + margin
 
         return stats_dict
 
-    def compare_frameworks(self, framework1: str, framework2: str, metric_name: str) -> StatisticalComparison:
+    def compare_frameworks(
+        self, framework1: str, framework2: str, metric_name: str
+    ) -> StatisticalComparison:
         """Compare two frameworks on a specific metric using statistical tests."""
-        values1 = [r.get(metric_name, 0) for r in self.framework_results[framework1] if metric_name in r]
-        values2 = [r.get(metric_name, 0) for r in self.framework_results[framework2] if metric_name in r]
+        raw_values1 = [
+            r.get(metric_name)
+            for r in self.framework_results[framework1]
+            if metric_name in r
+        ]
+        raw_values2 = [
+            r.get(metric_name)
+            for r in self.framework_results[framework2]
+            if metric_name in r
+        ]
+        values1 = [v for v in raw_values1 if isinstance(v, (int, float))]
+        values2 = [v for v in raw_values2 if isinstance(v, (int, float))]
 
         if not values1 or not values2:
             return StatisticalComparison(
                 metric_name=metric_name,
                 framework1=framework1,
                 framework2=framework2,
-                mean1=0, mean2=0, std1=0, std2=0,
+                mean1=0,
+                mean2=0,
+                std1=0,
+                std2=0,
             )
 
         mean1 = statistics.mean(values1)
@@ -176,14 +195,14 @@ class BenchmarkAnalyzer:
                 comparison.significant = p_value < comparison.significance_level
 
                 # Calculate Cohen's d (effect size)
-                pooled_std = ((std1 ** 2 + std2 ** 2) / 2) ** 0.5
+                pooled_std = ((std1**2 + std2**2) / 2) ** 0.5
                 if pooled_std > 0:
                     comparison.cohens_d = (mean1 - mean2) / pooled_std
 
                 # Confidence intervals
                 n1, n2 = len(values1), len(values2)
-                se1 = std1 / (n1 ** 0.5) if n1 > 0 else 0
-                se2 = std2 / (n2 ** 0.5) if n2 > 0 else 0
+                se1 = std1 / (n1**0.5) if n1 > 0 else 0
+                se2 = std2 / (n2**0.5) if n2 > 0 else 0
 
                 comparison.ci1_lower = mean1 - 1.96 * se1
                 comparison.ci1_upper = mean1 + 1.96 * se1
@@ -206,35 +225,43 @@ class BenchmarkAnalyzer:
         contingency = []
         for framework in framework_names:
             results = self.framework_results[framework]
-            successful = sum(1 for r in results if r.get('success', False))
+            successful = sum(1 for r in results if r.get("success", False))
             failed = len(results) - successful
             contingency.append([successful, failed])
 
         comparison = {
-            'frameworks': framework_names,
-            'success_rates': {
+            "frameworks": framework_names,
+            "success_rates": {
                 framework: self.get_success_rate(framework)
                 for framework in framework_names
             },
-            'counts': {
+            "counts": {
                 framework: {
-                    'successful': sum(1 for r in self.framework_results[framework] if r.get('success', False)),
-                    'failed': sum(1 for r in self.framework_results[framework] if not r.get('success', False)),
-                    'total': len(self.framework_results[framework]),
+                    "successful": sum(
+                        1
+                        for r in self.framework_results[framework]
+                        if r.get("success", False)
+                    ),
+                    "failed": sum(
+                        1
+                        for r in self.framework_results[framework]
+                        if not r.get("success", False)
+                    ),
+                    "total": len(self.framework_results[framework]),
                 }
                 for framework in framework_names
-            }
+            },
         }
 
         # Chi-square test if scipy available
         if SCIPY_AVAILABLE and len(framework_names) >= 2:
             try:
                 chi2, p_value, dof, expected = stats.chi2_contingency(contingency)
-                comparison['chi_square'] = {
-                    'statistic': chi2,
-                    'p_value': p_value,
-                    'degrees_of_freedom': dof,
-                    'significant': p_value < 0.05,
+                comparison["chi_square"] = {
+                    "statistic": chi2,
+                    "p_value": p_value,
+                    "degrees_of_freedom": dof,
+                    "significant": p_value < 0.05,
                 }
             except Exception as e:
                 print(f"Error performing chi-square test: {e}")
@@ -246,47 +273,59 @@ class BenchmarkAnalyzer:
         category_results = defaultdict(lambda: defaultdict(list))
 
         for result in self.task_results:
-            task_id = result.get('task_id', '')
-            framework = result.get('framework', 'unknown')
+            task_id = result.get("task_id", "")
+            framework = result.get("framework", "unknown")
 
             # Determine category from task_id
-            if task_id.startswith('simple_'):
-                category = 'simple'
-            elif task_id.startswith('medium_'):
-                category = 'medium'
-            elif task_id.startswith('complex_'):
-                category = 'complex'
+            if task_id.startswith("simple_"):
+                category = "simple"
+            elif task_id.startswith("medium_"):
+                category = "medium"
+            elif task_id.startswith("complex_"):
+                category = "complex"
             else:
-                category = 'unknown'
+                category = "unknown"
 
             category_results[category][framework].append(result)
 
         analysis = {}
         for category, framework_data in category_results.items():
-            analysis[category] = {
-                'frameworks': {},
-                'overall': {}
-            }
+            analysis[category] = {"frameworks": {}, "overall": {}}
 
             all_results = []
             for framework, results in framework_data.items():
-                success_rate = sum(1 for r in results if r.get('success', False)) / len(results) if results else 0
-                avg_time = statistics.mean([r.get('completion_time_seconds', 0) for r in results]) if results else 0
+                success_rate = (
+                    sum(1 for r in results if r.get("success", False)) / len(results)
+                    if results
+                    else 0
+                )
+                avg_time = (
+                    statistics.mean(
+                        [r.get("completion_time_seconds", 0) for r in results]
+                    )
+                    if results
+                    else 0
+                )
 
-                analysis[category]['frameworks'][framework] = {
-                    'count': len(results),
-                    'success_rate': success_rate,
-                    'avg_time': avg_time,
+                analysis[category]["frameworks"][framework] = {
+                    "count": len(results),
+                    "success_rate": success_rate,
+                    "avg_time": avg_time,
                 }
 
                 all_results.extend(results)
 
             # Overall stats for category
             if all_results:
-                analysis[category]['overall'] = {
-                    'count': len(all_results),
-                    'success_rate': sum(1 for r in all_results if r.get('success', False)) / len(all_results),
-                    'avg_time': statistics.mean([r.get('completion_time_seconds', 0) for r in all_results]),
+                analysis[category]["overall"] = {
+                    "count": len(all_results),
+                    "success_rate": sum(
+                        1 for r in all_results if r.get("success", False)
+                    )
+                    / len(all_results),
+                    "avg_time": statistics.mean(
+                        [r.get("completion_time_seconds", 0) for r in all_results]
+                    ),
                 }
 
         return analysis
@@ -300,7 +339,7 @@ class BenchmarkAnalyzer:
             f"Frameworks evaluated: {', '.join(self.framework_results.keys())}",
             "",
             "## Overall Success Rates",
-            ""
+            "",
         ]
 
         # Success rates
@@ -308,12 +347,20 @@ class BenchmarkAnalyzer:
             rate = self.get_success_rate(framework)
             count = len(self.framework_results[framework])
             successful = int(rate * count)
-            report_lines.append(f"- **{framework}**: {rate:.1%} ({successful}/{count} tasks)")
+            report_lines.append(
+                f"- **{framework}**: {rate:.1%} ({successful}/{count} tasks)"
+            )
 
         report_lines.extend(["", "## Performance Metrics", ""])
 
         # Key metrics comparison
-        metrics = ['completion_time_seconds', 'step_count', 'token_usage_input', 'token_usage_output', 'estimated_cost_usd']
+        metrics = [
+            "completion_time_seconds",
+            "step_count",
+            "token_usage_input",
+            "token_usage_output",
+            "estimated_cost_usd",
+        ]
 
         for metric in metrics:
             report_lines.append(f"### {metric.replace('_', ' ').title()}")
@@ -336,14 +383,16 @@ class BenchmarkAnalyzer:
             report_lines.extend(["## Statistical Comparisons", ""])
 
             for i, fw1 in enumerate(frameworks):
-                for fw2 in frameworks[i+1:]:
+                for fw2 in frameworks[i + 1 :]:
                     report_lines.append(f"### {fw1} vs {fw2}")
                     report_lines.append("")
 
-                    for metric in ['completion_time_seconds', 'step_count']:
+                    for metric in ["completion_time_seconds", "step_count"]:
                         comparison = self.compare_frameworks(fw1, fw2, metric)
                         if comparison.p_value is not None:
-                            report_lines.append(f"**{metric}**: {comparison.get_interpretation()}")
+                            report_lines.append(
+                                f"**{metric}**: {comparison.get_interpretation()}"
+                            )
 
                     report_lines.append("")
 
@@ -356,7 +405,7 @@ class BenchmarkAnalyzer:
                 report_lines.append(f"### {category.title()} Tasks")
                 report_lines.append("")
 
-                for framework, stats in data['frameworks'].items():
+                for framework, stats in data["frameworks"].items():
                     report_lines.append(
                         f"- **{framework}**: "
                         f"success={stats['success_rate']:.1%}, "
@@ -370,8 +419,8 @@ class BenchmarkAnalyzer:
         if success_comparison:
             report_lines.extend(["## Success Rate Statistical Test", ""])
 
-            if 'chi_square' in success_comparison:
-                chi_sq = success_comparison['chi_square']
+            if "chi_square" in success_comparison:
+                chi_sq = success_comparison["chi_square"]
                 report_lines.append(
                     f"Chi-square test: χ²={chi_sq['statistic']:.2f}, "
                     f"p={chi_sq['p_value']:.4f}, "
@@ -381,7 +430,7 @@ class BenchmarkAnalyzer:
         report = "\n".join(report_lines)
 
         if output_file:
-            with open(output_file, 'w') as f:
+            with open(output_file, "w") as f:
                 f.write(report)
 
         return report
@@ -400,7 +449,7 @@ class BenchmarkAnalyzer:
 
         fieldnames = sorted(all_keys)
 
-        with open(output_file, 'w', newline='') as f:
+        with open(output_file, "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(self.task_results)

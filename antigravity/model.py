@@ -6,33 +6,12 @@ supporting Claude, Gemini, and other models through Google's unified API.
 """
 
 import asyncio
-import json
 import re
 import uuid
 from typing import Any, AsyncIterator, Literal
 
 import httpx
 
-
-# Rate limit configuration
-MAX_RETRIES = 5
-INITIAL_BACKOFF_SECONDS = 2.0
-MAX_BACKOFF_SECONDS = 60.0
-BACKOFF_MULTIPLIER = 2.0
-
-
-def parse_retry_delay(error_message: str) -> float | None:
-    """Extract retry delay from error message like 'reset after 3s'."""
-    match = re.search(r'reset after\s+(\d+(?:\.\d+)?)(s|m|h)?', error_message, re.IGNORECASE)
-    if match:
-        value = float(match.group(1))
-        unit = (match.group(2) or 's').lower()
-        if unit == 'm':
-            return value * 60
-        elif unit == 'h':
-            return value * 3600
-        return value
-    return None
 
 from pydantic_ai.messages import (
     ModelMessage,
@@ -42,14 +21,11 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models import Model, ModelRequestParameters
 from pydantic_ai.settings import ModelSettings
-from pydantic_ai.usage import Usage
 
 from .constants import (
-    ANTIGRAVITY_ENDPOINT,
     ANTIGRAVITY_ENDPOINT_FALLBACKS,
     ANTIGRAVITY_HEADERS,
     ANTIGRAVITY_MODELS,
-    GEMINI_CLI_ENDPOINT,
     GEMINI_CLI_HEADERS,
     ANTIGRAVITY_DEFAULT_PROJECT_ID,
 )
@@ -74,6 +50,28 @@ AntigravityModelName = Literal[
     "gemini-2.5-pro",
 ]
 
+# Rate limit configuration
+MAX_RETRIES = 5
+INITIAL_BACKOFF_SECONDS = 2.0
+MAX_BACKOFF_SECONDS = 60.0
+BACKOFF_MULTIPLIER = 2.0
+
+
+def parse_retry_delay(error_message: str) -> float | None:
+    """Extract retry delay from error message like 'reset after 3s'."""
+    match = re.search(
+        r"reset after\s+(\d+(?:\.\d+)?)(s|m|h)?", error_message, re.IGNORECASE
+    )
+    if match:
+        value = float(match.group(1))
+        unit = (match.group(2) or "s").lower()
+        if unit == "m":
+            return value * 60
+        elif unit == "h":
+            return value * 3600
+        return value
+    return None
+
 
 class AntigravityModel(Model):
     """
@@ -97,6 +95,7 @@ class AntigravityModel(Model):
         model_name: str,
         *,
         provider: AntigravityProvider | None = None,
+        usage_tracker: Any | None = None,
         thinking_budget: int | None = None,
         thinking_level: str | None = None,
         max_output_tokens: int | None = None,
@@ -111,6 +110,7 @@ class AntigravityModel(Model):
         Args:
             model_name: Name of the model to use (e.g., "claude-sonnet-4-5-thinking")
             provider: Optional pre-configured provider
+            usage_tracker: Optional usage tracker for API calls and tokens
             thinking_budget: Token budget for thinking (Claude models)
             thinking_level: Thinking level for Gemini models ("low", "medium", "high")
             max_output_tokens: Maximum output tokens
@@ -123,6 +123,9 @@ class AntigravityModel(Model):
 
         self._model_name = model_name
         self._provider = provider or AntigravityProvider()
+        self._usage_tracker = usage_tracker or getattr(
+            self._provider, "usage_tracker", None
+        )
 
         # Thinking configuration
         self._thinking_budget = thinking_budget
@@ -163,7 +166,9 @@ class AntigravityModel(Model):
     def _get_model_family(self) -> str:
         """Get the model family (claude or gemini)."""
         model_info = ANTIGRAVITY_MODELS.get(self._model_name, {})
-        return model_info.get("family", "claude" if "claude" in self._model_name else "gemini")
+        return model_info.get(
+            "family", "claude" if "claude" in self._model_name else "gemini"
+        )
 
     def _build_generation_config(self) -> dict[str, Any]:
         """Build the generationConfig for the request."""
@@ -268,12 +273,16 @@ class AntigravityModel(Model):
             # Try each endpoint
             for fallback_endpoint in ANTIGRAVITY_ENDPOINT_FALLBACKS:
                 if stream:
-                    current_url = f"{fallback_endpoint}/v1internal:streamGenerateContent?alt=sse"
+                    current_url = (
+                        f"{fallback_endpoint}/v1internal:streamGenerateContent?alt=sse"
+                    )
                 else:
                     current_url = f"{fallback_endpoint}/v1internal:generateContent"
 
                 try:
-                    async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=30.0)) as client:
+                    async with httpx.AsyncClient(
+                        timeout=httpx.Timeout(120.0, connect=30.0)
+                    ) as client:
                         response = await client.post(
                             current_url,
                             json=envelope,
@@ -292,13 +301,15 @@ class AntigravityModel(Model):
                             except Exception:
                                 pass
 
-                            error_msg = error_data.get('error', {}).get('message', 'Rate limited')
+                            error_msg = error_data.get("error", {}).get(
+                                "message", "Rate limited"
+                            )
 
                             # Try to parse retry delay from response
                             retry_delay = parse_retry_delay(error_msg)
                             if retry_delay is None:
                                 # Check retry-after header
-                                retry_after = response.headers.get('retry-after')
+                                retry_after = response.headers.get("retry-after")
                                 if retry_after:
                                     try:
                                         retry_delay = float(retry_after)
@@ -309,22 +320,32 @@ class AntigravityModel(Model):
                             wait_time = retry_delay if retry_delay else backoff
 
                             if attempt < MAX_RETRIES - 1:
-                                print(f"Rate limited. Waiting {wait_time:.1f}s before retry (attempt {attempt + 1}/{MAX_RETRIES})...")
+                                print(
+                                    f"Rate limited. Waiting {wait_time:.1f}s before retry (attempt {attempt + 1}/{MAX_RETRIES})..."
+                                )
                                 await asyncio.sleep(wait_time)
-                                backoff = min(backoff * BACKOFF_MULTIPLIER, MAX_BACKOFF_SECONDS)
+                                backoff = min(
+                                    backoff * BACKOFF_MULTIPLIER, MAX_BACKOFF_SECONDS
+                                )
                                 break  # Try next attempt
                             else:
-                                raise Exception(f"Rate limited after {MAX_RETRIES} retries: {error_msg}")
+                                raise Exception(
+                                    f"Rate limited after {MAX_RETRIES} retries: {error_msg}"
+                                )
 
                         # Other errors
                         if response.status_code >= 400:
                             error_text = response.text
                             try:
                                 error_data = response.json()
-                                error_text = error_data.get("error", {}).get("message", error_text)
+                                error_text = error_data.get("error", {}).get(
+                                    "message", error_text
+                                )
                             except Exception:
                                 pass
-                            raise Exception(f"API error {response.status_code}: {error_text}")
+                            raise Exception(
+                                f"API error {response.status_code}: {error_text}"
+                            )
 
                 except Exception as e:
                     last_error = e
@@ -366,7 +387,7 @@ class AntigravityModel(Model):
         # Check if we need to force tool calling for structured output
         force_tool_calling = bool(
             model_request_parameters
-            and model_request_parameters.output_mode == 'tool'
+            and model_request_parameters.output_mode == "tool"
             and tools
         )
 
@@ -386,7 +407,15 @@ class AntigravityModel(Model):
 
         # Parse response
         response_data = response.json()
-        parts, usage = antigravity_to_response(response_data, self._model_name)
+        parts, usage, usage_available = antigravity_to_response(
+            response_data, self._model_name
+        )
+
+        if self._usage_tracker is not None:
+            if usage_available:
+                self._usage_tracker.record(usage.input_tokens, usage.output_tokens)
+            else:
+                self._usage_tracker.record(None, None)
 
         return ModelResponse(
             parts=parts,
@@ -417,7 +446,7 @@ class AntigravityModel(Model):
         # Check if we need to force tool calling for structured output
         force_tool_calling = bool(
             model_request_parameters
-            and model_request_parameters.output_mode == 'tool'
+            and model_request_parameters.output_mode == "tool"
             and tools
         )
 
@@ -472,7 +501,9 @@ class AntigravityModel(Model):
         url = f"{endpoint}/v1internal:streamGenerateContent?alt=sse"
 
         # Make streaming request
-        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=30.0)) as client:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(120.0, connect=30.0)
+        ) as client:
             async with client.stream(
                 "POST",
                 url,
@@ -481,7 +512,12 @@ class AntigravityModel(Model):
             ) as response:
                 if response.status_code >= 400:
                     error_text = await response.aread()
-                    raise Exception(f"API error {response.status_code}: {error_text.decode()}")
+                    raise Exception(
+                        f"API error {response.status_code}: {error_text.decode()}"
+                    )
+
+                if self._usage_tracker is not None:
+                    self._usage_tracker.record(None, None)
 
                 async for line in response.aiter_lines():
                     if not line:
@@ -529,6 +565,7 @@ class AntigravityModel(Model):
 def create_model(
     model_name: AntigravityModelName | str,
     provider: AntigravityProvider | None = None,
+    usage_tracker: Any | None = None,
     thinking_budget: int | None = None,
     thinking_level: str | None = None,
     max_output_tokens: int | None = None,
@@ -540,6 +577,7 @@ def create_model(
     Args:
         model_name: Name of the model to use
         provider: Optional pre-configured provider
+        usage_tracker: Optional usage tracker for API calls and tokens
         thinking_budget: Token budget for thinking (Claude models)
         thinking_level: Thinking level for Gemini models ("low", "medium", "high")
         max_output_tokens: Maximum output tokens
@@ -551,6 +589,7 @@ def create_model(
     return AntigravityModel(
         model_name=model_name,
         provider=provider or AntigravityProvider(),
+        usage_tracker=usage_tracker,
         thinking_budget=thinking_budget,
         thinking_level=thinking_level,
         max_output_tokens=max_output_tokens,
