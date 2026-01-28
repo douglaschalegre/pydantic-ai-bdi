@@ -86,8 +86,7 @@ benchmarks/
 │   ├── langgraph_agent.py      # LangGraph implementation
 │   └── crewai_agent.py         # CrewAI implementation
 ├── metrics/                     # Metrics collection
-│   ├── collector.py            # Metrics collector
-│   └── analyzer.py             # Statistical analysis
+│   └── collector.py            # Metrics collector
 ├── evaluation/                  # Evaluation framework
 │   ├── runner.py               # Benchmark runner
 │   └── validator.py            # Success validation
@@ -109,16 +108,7 @@ uv run python -m benchmarks.experiments.run_experiments --participant 1 --framew
 
 ### Analyzing Results
 
-```bash
-# Generate statistical analysis
-python -m benchmarks.metrics.analyzer --results results/run_20260117/
-
-# Compare frameworks
-python -m benchmarks.metrics.analyzer --compare bdi langgraph crewai
-
-# Generate report
-python -m benchmarks.metrics.analyzer --report --format pdf
-```
+Statistical analysis tooling is currently not included.
 
 ## Statistical Analysis
 
