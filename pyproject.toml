@@ -9,37 +9,17 @@ dependencies = [
     "pydantic-ai",
     "chardet",
     "python-dotenv",
+    "psutil>=5.9.0",
+    "tomli>=2.0.1; python_version < '3.11'",
+    "langgraph>=0.2.0",
+    "langchain-openai>=0.1.0",
+    "langchain-core>=0.2.0",
+    "crewai>=0.28.0",
+    "crewai-tools>=0.2.0",
+    "openai>=1.0.0",
 ]
 
 [project.optional-dependencies]
-# Core benchmarking dependencies
-benchmark = [
-    "psutil>=5.9.0",
-    "tomli>=2.0.1; python_version < '3.11'",
-]
-
-# Framework dependencies for multi-participant experiments
-frameworks = [
-    "langgraph>=0.2.0",
-    "langchain-openai>=0.1.0",
-    "langchain-core>=0.2.0",
-    "crewai>=0.28.0",
-    "crewai-tools>=0.2.0",
-    "openai>=1.0.0",
-]
-
-# All benchmark dependencies combined
-benchmark-all = [
-    "psutil>=5.9.0",
-    "tomli>=2.0.1; python_version < '3.11'",
-    "langgraph>=0.2.0",
-    "langchain-openai>=0.1.0",
-    "langchain-core>=0.2.0",
-    "crewai>=0.28.0",
-    "crewai-tools>=0.2.0",
-    "openai>=1.0.0",
-]
-
 # Development dependencies
 dev = [
     "pytest>=7.0.0",

@@ -52,8 +52,6 @@ For running experiments, you need:
 - **Agent Frameworks** (LangGraph, CrewAI) - *Required to run comparison experiments*
 - **Benchmark Tools** (psutil) - *Required for metrics collection*
 
-All of these are installed automatically with `benchmark-all`.
-
 #### Using uv (Recommended - Fast!)
 
 ```bash
@@ -62,7 +60,7 @@ pip install uv
 
 # Install everything from project root
 cd pydantic-ai-bdi
-uv sync --extra benchmark-all
+uv sync
 
 # This installs:
 # 1. BDI Agent Framework (bdi/, pydantic-ai)
@@ -247,7 +245,7 @@ Total study time: ~18-33 hours for all three frameworks
 
 ### Common Issues
 - **Import errors**: Make sure you're running from project root
-- **Missing dependencies**: Run `pip install -r benchmarks/requirements.txt`
+- **Missing dependencies**: Run `uv sync` from the repo root
 - **Framework not found**: Install framework-specific dependencies
 - **API errors**: Check your OpenAI API key is set
 

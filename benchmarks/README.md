@@ -91,10 +91,15 @@ benchmarks/
 │   ├── runner.py               # Benchmark runner
 │   └── validator.py            # Success validation
 ├── results/                     # Benchmark results (gitignored)
-└── requirements.txt             # Additional dependencies
 ```
 
 ## Usage
+
+Install dependencies from the repo root:
+
+```bash
+uv sync
+```
 
 ### Running Participant Experiments
 
