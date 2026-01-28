@@ -31,7 +31,7 @@ def _repo_root() -> Path:
     return REPO_ROOT
 
 
-def _load_module(participant_path: Path):
+def _load_module(participant_path: Path) -> Any:
     spec = importlib.util.spec_from_file_location(
         participant_path.stem,
         participant_path,
@@ -65,9 +65,10 @@ def _collect_code_metrics(metrics: ExperimentMetrics, participant_path: Path) ->
         content = participant_path.read_text(encoding="utf-8")
     except Exception:
         return
-    metrics.lines_of_code = len(content.splitlines())
+    lines = content.splitlines()
+    metrics.lines_of_code = len(lines)
     metrics.functions_defined = sum(
-        1 for line in content.splitlines() if line.lstrip().startswith("def ")
+        1 for line in lines if line.lstrip().startswith("def ")
     )
 
 
