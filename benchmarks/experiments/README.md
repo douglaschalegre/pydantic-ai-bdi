@@ -50,8 +50,7 @@ experiments/
 For running experiments, you need:
 - **BDI Agent Framework** (pydantic-ai, etc.) - *Required to run BDI experiments*
 - **Agent Frameworks** (LangGraph, CrewAI) - *Required to run comparison experiments*
-- **Benchmark Tools** (scipy, numpy) - *Required for metrics collection*
-- **Visualization** (matplotlib) - *Optional, for charts*
+- **Benchmark Tools** (psutil) - *Required for metrics collection*
 
 All of these are installed automatically with `benchmark-all`.
 
@@ -68,8 +67,7 @@ uv sync --extra benchmark-all
 # This installs:
 # 1. BDI Agent Framework (bdi/, pydantic-ai)
 # 2. LangGraph & CrewAI frameworks
-# 3. Benchmark tools (scipy, numpy, psutil)
-# 4. Visualization tools (matplotlib, seaborn)
+# 3. Benchmark tools (psutil)
 ```
 
 See `INSTALLATION.md` for more options.
@@ -82,7 +80,6 @@ uv run python -c "import bdi; print('✓ BDI Framework')"
 uv run python -c "import pydantic_ai; print('✓ Pydantic AI')"
 uv run python -c "import langgraph; print('✓ LangGraph')"
 uv run python -c "import crewai; print('✓ CrewAI')"
-uv run python -c "import scipy; print('✓ SciPy')"
 ```
 
 ### 2. Get Your Participant Number
