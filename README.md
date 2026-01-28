@@ -92,7 +92,7 @@ The BDI framework is suitable for:
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.10-3.13
 - An LLM API key or ollama server
 
 ## Installation
