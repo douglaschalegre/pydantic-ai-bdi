@@ -15,6 +15,12 @@ from bdi.schemas import IntentionStep, BeliefExtractionResult, DesireStatus, Ste
 from bdi.errors import is_validation_output_error
 from bdi.logging import log_states, format_beliefs_for_context
 from bdi.monitoring import generate_history_context
+from bdi.prompts import (
+    build_descriptive_execution_prompt,
+    build_step_assessment_prompt,
+    build_step_belief_extraction_prompt,
+    build_tool_execution_prompt,
+)
 from bdi.state_transitions import finalize_current_intention
 
 if TYPE_CHECKING:
@@ -79,43 +85,11 @@ async def extract_relevant_beliefs_from_result(
     if agent.verbose:
         print(f"{bcolors.SYSTEM}  Extracting beliefs from step result...{bcolors.ENDC}")
 
-    belief_extraction_prompt = f"""
-    Analyze the following step execution and extract any factual information that should be recorded as beliefs.
-
-    Step Objective: "{step.description}"
-    Step Result: "{result.output if result else "No result"}"
-    Step Success: {step_success}
-
-    Extract beliefs about:
-    - Factual information discovered (e.g., file paths, status values, API responses)
-    - Error causes or constraints (e.g., "path does not exist", "network unavailable")
-    - State changes or conditions revealed (e.g., "repository is empty", "file contains X")
-    - Tool availability or limitations learned (e.g., "tool requires parameter Y")
-
-    For FAILED steps, focus on extracting information about WHY it failed - these constraints are valuable.
-    For SUCCESSFUL steps, extract the positive information discovered.
-
-    IMPORTANT: Each belief MUST have exactly these three fields:
-    - "name": A concise identifier string (e.g., "repo_path", "commit_count", "error_type")
-    - "value": The actual value as a string (e.g., "/path/to/repo", "42", "permission_denied")
-    - "certainty": A float between 0.0 and 1.0 indicating confidence
-
-    Example of CORRECT format:
-    {{
-      "beliefs": [
-        {{"name": "repo_path", "value": "/Users/douglas/code/project", "certainty": 1.0}},
-        {{"name": "has_commits", "value": "true", "certainty": 0.9}}
-      ],
-      "explanation": "Extracted repository path and confirmed commits exist."
-    }}
-
-    Example of INCORRECT format (DO NOT USE):
-    {{
-      "beliefs": [{{"repo_path": "/path", "has_commits": true}}]
-    }}
-
-    If no meaningful beliefs can be extracted, return an empty beliefs list with an explanation.
-    """
+    belief_extraction_prompt = build_step_belief_extraction_prompt(
+        step.description,
+        result.output if result else "No result",
+        step_success,
+    )
 
     extracted_beliefs = []
 
@@ -193,39 +167,17 @@ async def analyze_step_outcome_and_update_beliefs(
     history_context = generate_history_context(intention)
 
     # --- Success Assessment (using LLM) ---
-    assessment_prompt = f"""
-    Original objective for the step: "{step.description}"
-    Result obtained: "{result.output}"
-    Step type: {"Tool call: " + step.tool_name if step.is_tool_call else "Descriptive step"}
-
-    Recent step history:
-    {history_context}
-
-    Evaluate if the step successfully achieved its original objective.
-
-    Assessment Guidelines:
-
-    FOR TOOL CALL STEPS:
-    - If the tool executed and returned data (not an error message), mark as SUCCESS
-    - The result may include analysis or discussion of the data - this is normal and doesn't indicate failure
-    - Only mark as FAILED if the tool returned an error, exception, or "not found" type message
-
-    FOR CHECK/VERIFY STEPS:
-    - If the result provides a definitive answer (yes/no, found/not found, true/false), mark as SUCCESS
-
-    FOR DESCRIPTIVE STEPS (no tool call):
-    - If the step produced a concrete outcome or information, mark as SUCCESS
-    - If the step only discussed what should be done without doing it, mark as FAILED
-
-    FOR ALL STEPS:
-    - Ignore verbose explanations or analysis in the result - focus on whether the objective was met
-    - If the result explicitly states an error occurred, mark as FAILED
-    - If uncertain, prefer SUCCESS over FAILURE (be lenient)
-
-    Provide your assessment:
-    - success: true if the step achieved its objective, false if it clearly failed
-    - reason: brief explanation (especially important if failed)
-    """
+    step_type = (
+        f"Tool call: {step.tool_name}"
+        if step.is_tool_call and step.tool_name
+        else "Descriptive step"
+    )
+    assessment_prompt = build_step_assessment_prompt(
+        step.description,
+        result.output,
+        step_type,
+        history_context,
+    )
 
     step_success = False
     try:
@@ -392,16 +344,13 @@ async def execute_intentions(agent: "BDI") -> Dict:
                     )
 
                 # Enhanced tool call prompt with belief context AND retry context
-                tool_prompt = f"""
-Current known information (beliefs):
-{beliefs_context}
-{retry_context}
-Execute the tool '{current_step.tool_name}' with the suggested parameters: {current_step.tool_params or {}}
-
-You may adjust parameters if current beliefs suggest better values or if conditions have changed.
-{"IMPORTANT: Previous attempts failed. Review the failure information above and modify your approach." if is_retry else ""}
-Perform this action now.
-"""
+                tool_prompt = build_tool_execution_prompt(
+                    beliefs_context,
+                    retry_context,
+                    current_step.tool_name,
+                    current_step.tool_params or {},
+                    is_retry,
+                )
                 step_result = await agent.run(tool_prompt)
                 print(
                     f"{bcolors.SYSTEM}  Tool '{current_step.tool_name}' result: {step_result.output}{bcolors.ENDC}"
@@ -437,15 +386,12 @@ Perform this action now.
                     )
 
                 # Enhanced descriptive step prompt with belief context AND retry context
-                enhanced_prompt = f"""
-Current known information (beliefs):
-{beliefs_context}
-{retry_context}
-Task: {current_step.description}
-
-Consider the current beliefs when executing this task.
-{"IMPORTANT: Previous attempts failed. Review the failure information above and modify your approach." if is_retry else ""}
-"""
+                enhanced_prompt = build_descriptive_execution_prompt(
+                    beliefs_context,
+                    retry_context,
+                    current_step.description,
+                    is_retry,
+                )
                 step_result = await agent.run(enhanced_prompt)
                 if agent.verbose:
                     print(

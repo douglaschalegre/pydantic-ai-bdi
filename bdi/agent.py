@@ -12,6 +12,7 @@ from helper.util import bcolors
 from bdi.schemas import BeliefSet, Desire, BeliefExtractionResult, generate_desire_id
 from bdi.errors import is_validation_output_error
 from bdi.logging import configure_terminal_output_mirror, log_states
+from bdi.prompts import build_initial_belief_extraction_prompt
 from bdi.planning import generate_intentions_from_desires
 from bdi.execution import execute_intentions
 from bdi.cycle import bdi_cycle
@@ -85,45 +86,7 @@ class BDI(Agent, Generic[T]):
             [f"- {d.description}" for d in self.desires]
         )
 
-        belief_extraction_prompt = f"""
-        Analyze the following desire descriptions and extract any factual information that should be recorded as beliefs.
-
-        Desire Descriptions:
-        {desires_text}
-
-        Extract ONLY concrete, factual information explicitly stated in the desires, such as:
-        - File paths or directory paths (e.g., "repository path is /path/to/repo")
-        - Names or identifiers (e.g., "the project is called X")
-        - URLs or endpoints
-        - Specific values or configurations mentioned
-        - Any other concrete facts that would be useful context
-
-        Do NOT extract:
-        - The goals or objectives themselves (these are desires, not beliefs)
-        - Inferred or assumed information not explicitly stated
-        - Vague or subjective statements
-
-        IMPORTANT: Each belief MUST have exactly these three fields:
-        - "name": A concise identifier string (e.g., "repo_path", "project_name", "target_url")
-        - "value": The actual value as a string (e.g., "/path/to/repo", "my-project", "https://api.example.com")
-        - "certainty": A float between 0.0 and 1.0 (use 1.0 for explicitly stated facts)
-
-        Example of CORRECT format:
-        {{
-          "beliefs": [
-            {{"name": "repo_path", "value": "/Users/douglas/code/masters/pydantic-ai-bdi", "certainty": 1.0}},
-            {{"name": "repo_name", "value": "pydantic-ai-bdi", "certainty": 1.0}}
-          ],
-          "explanation": "Extracted repository path and name from desire description."
-        }}
-
-        Example of INCORRECT format (DO NOT USE):
-        {{
-          "beliefs": [{{"repo_path": "/path", "repo_name": "project"}}]
-        }}
-
-        If no factual information can be extracted, return an empty beliefs list with an explanation.
-        """
+        belief_extraction_prompt = build_initial_belief_extraction_prompt(desires_text)
 
         try:
             extraction_result = await self.run(

@@ -16,6 +16,7 @@ from bdi.schemas import (
     DesireStatus,
 )
 from bdi.logging import log_states
+from bdi.prompts import build_planning_stage1_prompt, build_planning_stage2_prompt
 
 if TYPE_CHECKING:
     from bdi.agent import BDI
@@ -99,24 +100,7 @@ async def generate_intentions_from_desires(agent: "BDI") -> None:
             print(
                 f"{bcolors.SYSTEM}Stage 1: Generating high-level intentions...{bcolors.ENDC}"
             )
-        prompt_stage1 = f"""
-        Given the following overall desires and current beliefs, identify high-level intentions required to fulfill these desires.
-        For each relevant desire, propose one or more concise intentions. Each intention should represent a distinct goal or task achievable *by you, the AI agent*.
-
-        Focus ONLY on WHAT needs to be done at a high level, but ensure these goals are achievable through information processing, analysis, or using the available tools.
-        Do *not* propose intentions that require physical actions in the real world (e.g., installing hardware), direct interaction with physical systems beyond your tool capabilities, or capabilities you do not possess based on the available tools.
-
-        Overall Desires:
-        {desires_text}
-
-        Current Beliefs:
-        {beliefs_text}
-
-        Available Tools:
-        (The underlying Pydantic AI agent will provide the available tools, including those from MCP, to the LLM.)
-
-        Respond with a list of high-level intentions using the required format. Associate each intention with its corresponding desire ID.
-        """
+        prompt_stage1 = build_planning_stage1_prompt(desires_text, beliefs_text)
         try:
             stage1_result = await agent.run(
                 prompt_stage1, output_type=HighLevelIntentionList
@@ -158,40 +142,11 @@ async def generate_intentions_from_desires(agent: "BDI") -> None:
                 f"{bcolors.INTENTION}  Processing high-level intention for Desire '{hl_intention.desire_id}': {hl_intention.description}{bcolors.ENDC}"
             )
 
-        prompt_stage2 = f"""
-        Your task is to create a detailed, step-by-step action plan to achieve the following high-level intention:
-        '{hl_intention.description}' (This contributes to overall Desire ID: {hl_intention.desire_id})
-
-        Consider the current beliefs and available tools to formulate the plan.
-        Each step in the plan must be a single, concrete action that *you, the AI agent*, can perform. Steps MUST be one of the following:
-        1. A specific call to an available tool (listed below), including necessary parameters based on context and beliefs.
-        2. An internal information processing or analysis task (e.g., 'Analyze sensor data', 'Summarize report X', 'Compare belief A and B', 'Decide next action based on criteria Y').
-
-        Do *not* generate steps requiring physical actions, interaction with the physical world outside of tool capabilities, or capabilities you do not possess.
-
-        Current Beliefs:
-        {beliefs_text}
-
-        IMPORTANT: When planning steps, actively use current beliefs:
-        - Skip discovery steps if beliefs already contain the needed information
-        - Use belief values to set initial tool parameters (e.g., if belief contains a path, use it)
-        - Account for constraints or limitations revealed in beliefs (e.g., if a belief indicates something failed, don't retry the same way)
-        - Build upon information already known rather than re-discovering it
-
-        Available Tools:
-        (The underlying Pydantic AI agent will provide the available tools, including those from MCP, to the LLM.)
-
-        STEP DESCRIPTION GUIDELINES:
-        - Write step descriptions as ACTIONS to perform, not questions to answer (e.g., "Retrieve git commit history" NOT "Check if repository path exists")
-        - For tool calls, describe WHAT the tool will do (e.g., "Use git_log to fetch commit history with max_count=50")
-        - For analysis tasks, describe the OUTPUT expected (e.g., "Extract commit summary from git log results and create presentation outline")
-        - Avoid CHECK/VERIFY steps unless they're truly validation steps with binary success criteria
-
-        Generate a sequence of detailed steps required to execute this intention. Ensure the steps are logical and sequential.
-        Structure the output as a list of steps according to the required format.
-        Focus exclusively on HOW to achieve the intention '{hl_intention.description}' using only the allowed action types.
-        Provide parameters for tool calls based on the context and beliefs.
-        """
+        prompt_stage2 = build_planning_stage2_prompt(
+            hl_intention.description,
+            hl_intention.desire_id,
+            beliefs_text,
+        )
         try:
             stage2_result = await agent.run(
                 prompt_stage2, output_type=DetailedStepList

@@ -10,6 +10,7 @@ from datetime import datetime
 from helper.util import bcolors
 from bdi.schemas import ReconsiderResult, DesireStatus
 from bdi.logging import log_states
+from bdi.prompts import build_reconsideration_prompt
 from bdi.state_transitions import update_desire_status
 
 if TYPE_CHECKING:
@@ -104,28 +105,12 @@ async def reconsider_current_intention(agent: "BDI") -> None:
         include_details=True,  # Include detailed information
     )
 
-    reconsider_prompt = f"""
-    Current Agent Beliefs:
-    {beliefs_text}
-
-    Step History:
-    {history_context}
-
-    Remaining Plan Steps (for Desire ID '{intention.desire_id}'):
-    {remaining_steps_text}
-
-    Evaluate whether the remaining plan should continue or needs revision.
-
-    Provide your assessment as:
-    - valid: true if the plan seems sound to continue, false if it needs revision
-    - reason: if valid is false, provide a brief explanation of why the plan is flawed
-
-    Consider:
-    1. Is this remaining plan still likely to succeed in achieving the original desire '{intention.desire_id}'?
-    2. Are there patterns in the step history suggesting the plan needs adjustment?
-    3. Are there contradictions between beliefs, history, and the plan's assumptions?
-    4. Based on the history of successful and failed steps, should the plan be modified?
-    """
+    reconsider_prompt = build_reconsideration_prompt(
+        beliefs_text,
+        history_context,
+        intention.desire_id,
+        remaining_steps_text,
+    )
 
     try:
         if agent.verbose:
