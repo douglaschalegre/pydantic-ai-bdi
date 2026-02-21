@@ -1,30 +1,24 @@
 import asyncio
 from pydantic_ai.mcp import MCPServerStdio
-from antigravity import AntigravityModel, AntigravityProvider
+from codex import CodexModel, CodexProvider
 from bdi import BDI
 from dotenv import load_dotenv
 import pathlib
 
 load_dotenv()
 
-# Create Antigravity provider and model
-# First run will trigger OAuth flow to authenticate with Google
-provider = AntigravityProvider()
+# Create Codex provider and model
+# First run will trigger OAuth flow to authenticate with OpenAI
+provider = CodexProvider()
 
-# Choose your model - options include:
-# Antigravity quota (shared, may hit rate limits faster):
-# - "claude-sonnet-4-5": Claude Sonnet 4.5
-# - "claude-sonnet-4-5-thinking": Claude Sonnet 4.5 with extended thinking
-# - "claude-opus-4-5-thinking": Claude Opus 4.5 with extended thinking
-# - "gemini-3-pro": Gemini 3 Pro
-# - "gemini-3-pro-high": Gemini 3 Pro (high thinking)
-# - "gemini-3-flash": Gemini 3 Flash
-#
-# Gemini CLI quota (separate quota pool, less likely to be rate limited):
-# - "gemini-2.5-flash": Gemini 2.5 Flash (recommended for testing)
-# - "gemini-2.5-pro": Gemini 2.5 Pro
-model = AntigravityModel(
-    "gemini-2.5-flash",  # Using Gemini 2.5 Flash (separate quota, less rate limiting)
+# Choose your Codex model. Examples:
+# - "gpt-5.3-codex" (default)
+# - "gpt-5.2-codex"
+# - "gpt-5.1-codex"
+# - "gpt-5-codex"
+# - "codex-mini-latest"
+model = CodexModel(
+    "gpt-5.3-codex",
     provider=provider,
 )
 

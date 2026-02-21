@@ -93,7 +93,10 @@ The BDI framework is suitable for:
 ## Requirements
 
 - Python 3.10-3.13
-- An LLM API key or ollama server
+- One of:
+  - An LLM API key
+  - An Ollama server
+  - OpenAI Codex OAuth login (ChatGPT subscription)
 
 ## Installation
 
@@ -105,6 +108,29 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # Install dependencies
 uv sync
 ```
+
+## OpenAI Codex OAuth Usage
+
+This repository includes a separate Codex provider/model API that authenticates with OpenAI via Codex OAuth (no `OPENAI_API_KEY` required).
+
+```python
+from codex import CodexModel, CodexProvider
+from bdi import BDI
+
+# First request triggers browser OAuth flow.
+provider = CodexProvider()
+
+# Prefixes like "openai-codex/..." are also accepted.
+model = CodexModel("gpt-5.3-codex", provider=provider)
+
+agent = BDI(
+    model,
+    desires=["Help the user"],
+    intentions=["Be helpful"],
+)
+```
+
+Tokens are stored at `~/.codex_oauth_tokens.json`.
 
 ## Usage Example
 
