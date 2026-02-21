@@ -1,36 +1,168 @@
 """Logging and state formatting utilities for the BDI agent.
 
-This module provides functions for logging agent state to files and console,
-and for formatting beliefs, desires, and intentions for display or LLM prompts.
+This module provides functions for:
+- mirroring terminal output to a log file
+- formatting beliefs, desires, and intentions for display or LLM prompts
 """
 
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, Optional
 from datetime import datetime
+import atexit
+import os
+import re
+import sys
+import threading
+
 from helper.util import bcolors
 
 if TYPE_CHECKING:
     from bdi.agent import BDI
 
 
-def write_to_log_file(agent: "BDI", content: str, section_title: str = None) -> None:
-    """Write content to the markdown log file.
+_ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
 
-    Args:
-        agent: The BDI agent instance
-        content: Content to write to the log file
-        section_title: Optional section title for markdown formatting
+
+class _TerminalMirrorStream:
+    """Mirror a terminal stream to a file handle."""
+
+    def __init__(
+        self,
+        terminal_stream,
+        log_file,
+        *,
+        strip_ansi: bool,
+        write_lock: threading.Lock,
+    ):
+        self._terminal_stream = terminal_stream
+        self._log_file = log_file
+        self._strip_ansi = strip_ansi
+        self._write_lock = write_lock
+
+    def write(self, data: str) -> int:
+        if not isinstance(data, str):
+            data = str(data)
+
+        written = self._terminal_stream.write(data)
+
+        if data:
+            log_data = _ANSI_ESCAPE_RE.sub("", data) if self._strip_ansi else data
+            with self._write_lock:
+                self._log_file.write(log_data)
+                self._log_file.flush()
+
+        return written
+
+    def flush(self) -> None:
+        self._terminal_stream.flush()
+        with self._write_lock:
+            self._log_file.flush()
+
+    def isatty(self) -> bool:
+        return self._terminal_stream.isatty()
+
+    def fileno(self) -> int:
+        return self._terminal_stream.fileno()
+
+    def __getattr__(self, name):
+        return getattr(self._terminal_stream, name)
+
+
+class _TerminalMirrorState:
+    """Runtime state for active stdout/stderr mirroring."""
+
+    def __init__(
+        self,
+        *,
+        log_file_path: str,
+        log_file,
+        original_stdout,
+        original_stderr,
+    ):
+        self.log_file_path = log_file_path
+        self.log_file = log_file
+        self.original_stdout = original_stdout
+        self.original_stderr = original_stderr
+
+
+_terminal_mirror_state: Optional[_TerminalMirrorState] = None
+_terminal_mirror_state_lock = threading.RLock()
+
+
+def configure_terminal_output_mirror(
+    log_file_path: str,
+    *,
+    strip_ansi: bool = True,
+) -> None:
+    """Mirror terminal stdout/stderr output into a log file.
+
+    If mirroring is already active for the same path, this is a no-op.
+    If mirroring is active for a different path, the previous mirror is replaced.
     """
-    if not agent.log_file_path:
+    global _terminal_mirror_state
+
+    if not log_file_path:
         return
 
-    try:
-        with open(agent.log_file_path, "a", encoding="utf-8") as f:
-            if section_title:
-                f.write(f"## {section_title}\n\n")
-            f.write(content)
-            f.write("\n\n")
-    except Exception as e:
-        print(f"{bcolors.FAIL}Failed to write to log file: {e}{bcolors.ENDC}")
+    normalized_path = os.path.abspath(log_file_path)
+
+    with _terminal_mirror_state_lock:
+        if (
+            _terminal_mirror_state
+            and _terminal_mirror_state.log_file_path == normalized_path
+        ):
+            return
+
+        if _terminal_mirror_state:
+            disable_terminal_output_mirror()
+
+        log_file = open(normalized_path, "a", encoding="utf-8")
+        write_lock = threading.Lock()
+
+        original_stdout = sys.stdout
+        original_stderr = sys.stderr
+
+        sys.stdout = _TerminalMirrorStream(
+            original_stdout,
+            log_file,
+            strip_ansi=strip_ansi,
+            write_lock=write_lock,
+        )
+        sys.stderr = _TerminalMirrorStream(
+            original_stderr,
+            log_file,
+            strip_ansi=strip_ansi,
+            write_lock=write_lock,
+        )
+
+        _terminal_mirror_state = _TerminalMirrorState(
+            log_file_path=normalized_path,
+            log_file=log_file,
+            original_stdout=original_stdout,
+            original_stderr=original_stderr,
+        )
+
+
+def disable_terminal_output_mirror() -> None:
+    """Disable active terminal output mirroring and restore streams."""
+    global _terminal_mirror_state
+
+    with _terminal_mirror_state_lock:
+        if not _terminal_mirror_state:
+            return
+
+        state = _terminal_mirror_state
+        _terminal_mirror_state = None
+
+        sys.stdout = state.original_stdout
+        sys.stderr = state.original_stderr
+
+        try:
+            state.log_file.flush()
+        finally:
+            state.log_file.close()
+
+
+atexit.register(disable_terminal_output_mirror)
 
 
 def format_beliefs_for_context(agent: "BDI") -> str:
@@ -58,7 +190,7 @@ def log_states(
     types: list[Literal["beliefs", "desires", "intentions"]],
     message: str | None = None,
 ) -> None:
-    """Log current agent state to console and file.
+    """Log current agent state to the terminal.
 
     Args:
         agent: The BDI agent instance
@@ -68,12 +200,6 @@ def log_states(
     if message:
         print(f"{bcolors.SYSTEM}{message}{bcolors.ENDC}")
 
-    # Prepare markdown content for file logging
-    md_content = []
-    if message:
-        md_content.append(f"**{message}**\n")
-    md_content.append(f"*Timestamp: {datetime.now().isoformat()}*\n")
-
     if "beliefs" in types:
         if agent.verbose:
             belief_str = "\n".join(
@@ -82,23 +208,11 @@ def log_states(
                     for name, b in agent.beliefs.beliefs.items()
                 ]
             )
-            print(
-                f"{bcolors.BELIEF}Beliefs:\n{belief_str or '  (None)'}{bcolors.ENDC}"
-            )
+            print(f"{bcolors.BELIEF}Beliefs:\n{belief_str or '  (None)'}{bcolors.ENDC}")
         else:
             print(
                 f"{bcolors.BELIEF}Beliefs: {len(agent.beliefs.beliefs)} items{bcolors.ENDC}"
             )
-
-        # Add to markdown
-        md_content.append("### Beliefs\n")
-        if agent.beliefs.beliefs:
-            for name, b in agent.beliefs.beliefs.items():
-                md_content.append(
-                    f"- **{name}**: {b.value} (Source: {b.source}, Certainty: {b.certainty:.2f}, Time: {datetime.fromtimestamp(b.timestamp).isoformat()})\n"
-                )
-        else:
-            md_content.append("*(None)*\n")
 
     if "desires" in types:
         if agent.verbose:
@@ -108,23 +222,9 @@ def log_states(
                     for d in agent.desires
                 ]
             )
-            print(
-                f"{bcolors.DESIRE}Desires:\n{desire_str or '  (None)'}{bcolors.ENDC}"
-            )
+            print(f"{bcolors.DESIRE}Desires:\n{desire_str or '  (None)'}{bcolors.ENDC}")
         else:
-            print(
-                f"{bcolors.DESIRE}Desires: {len(agent.desires)} items{bcolors.ENDC}"
-            )
-
-        # Add to markdown
-        md_content.append("### Desires\n")
-        if agent.desires:
-            for d in agent.desires:
-                md_content.append(
-                    f"- **{d.id}**: {d.description} (Status: {d.status.value}, Priority: {d.priority})\n"
-                )
-        else:
-            md_content.append("*(None)*\n")
+            print(f"{bcolors.DESIRE}Desires: {len(agent.desires)} items{bcolors.ENDC}")
 
     if "intentions" in types:
         if agent.verbose:
@@ -142,28 +242,10 @@ def log_states(
                 f"{bcolors.INTENTION}Intentions: {len(agent.intentions)} items{bcolors.ENDC}"
             )
 
-        # Add to markdown
-        md_content.append("### Intentions\n")
-        if agent.intentions:
-            for i in agent.intentions:
-                next_step = (
-                    i.steps[i.current_step].description
-                    if i.current_step < len(i.steps)
-                    else "(Completed)"
-                )
-                md_content.append(
-                    f"- **Desire '{i.desire_id}'**: Next → {next_step} (Step {i.current_step + 1}/{len(i.steps)})\n"
-                )
-        else:
-            md_content.append("*(None)*\n")
-
-    # Write to log file if enabled
-    if agent.log_file_path:
-        write_to_log_file(agent, "".join(md_content))
-
 
 __all__ = [
-    "write_to_log_file",
+    "configure_terminal_output_mirror",
+    "disable_terminal_output_mirror",
     "format_beliefs_for_context",
     "log_states",
 ]

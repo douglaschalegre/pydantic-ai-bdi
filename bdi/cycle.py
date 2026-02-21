@@ -5,11 +5,10 @@ deliberation, intention generation, execution, and plan monitoring.
 """
 
 from typing import TYPE_CHECKING
-from datetime import datetime
 
 from helper.util import bcolors
 from bdi.schemas import DesireStatus, Desire, generate_desire_id
-from bdi.logging import log_states, write_to_log_file
+from bdi.logging import log_states
 from bdi.planning import generate_intentions_from_desires
 from bdi.execution import execute_intentions
 from bdi.monitoring import reconsider_current_intention
@@ -42,14 +41,6 @@ async def bdi_cycle(agent: "BDI") -> str:
         - "interrupted": Non-interactive mode (EOF) or KeyboardInterrupt
     """
     agent.cycle_count += 1
-
-    # Log cycle start
-    if agent.log_file_path:
-        write_to_log_file(
-            agent,
-            f"**Cycle {agent.cycle_count} Start**\n*Timestamp: {datetime.now().isoformat()}*",
-            section_title=f"BDI Cycle {agent.cycle_count}",
-        )
 
     # Extract beliefs from desires on first cycle (before any execution)
     # This ensures factual information in desire descriptions is available as beliefs
@@ -141,11 +132,6 @@ async def bdi_cycle(agent: "BDI") -> str:
                 types=["beliefs", "desires", "intentions"],
                 message="States after BDI cycle (idle_prompted)",
             )
-            if agent.log_file_path:
-                write_to_log_file(
-                    agent,
-                    f"**Cycle {agent.cycle_count} End (idle_prompted)**\n*Timestamp: {datetime.now().isoformat()}*\n\n---",
-                )
             return "idle_prompted"
 
     # 4. Intention Execution (One Step)
@@ -188,13 +174,6 @@ async def bdi_cycle(agent: "BDI") -> str:
         types=["beliefs", "desires", "intentions"],
         message="States after BDI cycle",
     )
-
-    # Log cycle end
-    if agent.log_file_path:
-        write_to_log_file(
-            agent,
-            f"**Cycle {agent.cycle_count} End**\n*Timestamp: {datetime.now().isoformat()}*\n\n---",
-        )
 
     return "executed"
 

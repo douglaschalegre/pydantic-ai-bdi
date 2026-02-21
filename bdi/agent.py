@@ -6,12 +6,11 @@ beliefs, desires, intentions, planning, execution, monitoring, and human-in-the-
 
 from typing import List, Optional, TypeVar, Generic
 from collections import deque
-from datetime import datetime
 
 from pydantic_ai import Agent
 from helper.util import bcolors
 from bdi.schemas import BeliefSet, Desire, BeliefExtractionResult, generate_desire_id
-from bdi.logging import log_states
+from bdi.logging import configure_terminal_output_mirror, log_states
 from bdi.planning import generate_intentions_from_desires
 from bdi.execution import execute_intentions
 from bdi.cycle import bdi_cycle
@@ -30,8 +29,8 @@ class BDI(Agent, Generic[T]):
     def __init__(
         self,
         *args,
-        desires: List[str] = None,
-        intentions: List[str] = None,
+        desires: Optional[List[str]] = None,
+        intentions: Optional[List[str]] = None,
         verbose: bool = False,
         enable_human_in_the_loop: bool = False,
         log_file_path: Optional[str] = None,
@@ -54,7 +53,9 @@ class BDI(Agent, Generic[T]):
 
         self._initialize_string_desires(desires)
 
-    def _initialize_string_desires(self, desire_strings: List[str]) -> None:
+    def _initialize_string_desires(
+        self, desire_strings: Optional[List[str]]
+    ) -> None:
         """Initialize desires from string descriptions.
 
         Args:
@@ -161,12 +162,19 @@ class BDI(Agent, Generic[T]):
                 )
 
     def _initialize_log_file(self) -> None:
-        """Initialize the markdown log file with header information."""
+        """Initialize terminal-mirrored log file."""
+        if not self.log_file_path:
+            return
+
+        log_path = self.log_file_path
+
         try:
-            with open(self.log_file_path, "w", encoding="utf-8") as f:
-                f.write("# BDI Agent Execution Log\n\n")
-                f.write(f"**Started:** {datetime.now().isoformat()}\n\n")
-                f.write("---\n\n")
+            # Truncate file and mirror terminal output into it.
+            with open(log_path, "w", encoding="utf-8"):
+                pass
+
+            configure_terminal_output_mirror(log_path)
+
             if self.verbose:
                 print(
                     f"{bcolors.SYSTEM}Log file initialized at: {self.log_file_path}{bcolors.ENDC}"
@@ -198,7 +206,7 @@ class BDI(Agent, Generic[T]):
         return await bdi_cycle(self)
 
     def log_states(self, types: list, message: str | None = None):
-        """Log agent state to console and file."""
+        """Log agent state to terminal output."""
         log_states(self, types, message)
 
 

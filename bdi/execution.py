@@ -12,7 +12,7 @@ import json
 
 from helper.util import bcolors
 from bdi.schemas import IntentionStep, BeliefExtractionResult, DesireStatus, StepAssessmentResult
-from bdi.logging import log_states, write_to_log_file, format_beliefs_for_context
+from bdi.logging import log_states, format_beliefs_for_context
 from bdi.monitoring import generate_history_context
 
 if TYPE_CHECKING:
@@ -305,14 +305,6 @@ async def analyze_step_outcome_and_update_beliefs(
                 print(
                     f"{bcolors.BELIEF}    + {belief_dict['name']}: {belief_dict['value']} (Certainty: {belief_dict['certainty']:.2f}){bcolors.ENDC}"
                 )
-
-        # Log to markdown file
-        if agent.log_file_path:
-            beliefs_md = "🔍 **Beliefs Extracted:**\n"
-            beliefs_md += "*Extracted from step result*\n\n"
-            for belief_dict in extracted_beliefs:
-                beliefs_md += f"- **{belief_dict['name']}**: {belief_dict['value']} (Certainty: {belief_dict['certainty']:.2f})\n"
-            write_to_log_file(agent, beliefs_md)
     else:
         if agent.verbose:
             print(f"{bcolors.SYSTEM}  No beliefs extracted.{bcolors.ENDC}")
@@ -379,23 +371,6 @@ async def execute_intentions(agent: "BDI") -> Dict:
             print(
                 f"{bcolors.WARNING}  Retrying step {intention.current_step + 1} {attempt_label}{bcolors.ENDC}"
             )
-
-        # Log step execution start (only on first attempt)
-        if retry_ctx.attempt_number == 0 and agent.log_file_path:
-            step_md = f"#### Step {intention.current_step + 1}/{len(intention.steps)}\n"
-            step_md += f"**Desire:** {intention.desire_id}\n"
-            step_md += f"**Description:** {current_step.description}\n"
-            if current_step.is_tool_call:
-                step_md += f"**Tool:** {current_step.tool_name}\n"
-                step_md += f"**Parameters:** {json.dumps(current_step.tool_params)}\n"
-            step_md += f"*Started: {datetime.now().isoformat()}*"
-            write_to_log_file(agent, step_md)
-        elif is_retry and agent.log_file_path:
-            retry_md = (
-                f"\n**Retry Attempt {retry_ctx.attempt_number} / {MAX_STEP_RETRIES}**\n"
-            )
-            retry_md += f"*Started: {datetime.now().isoformat()}*"
-            write_to_log_file(agent, retry_md)
 
         try:
             # Get current beliefs to provide context for execution
@@ -527,14 +502,6 @@ Consider the current beliefs when executing this task.
             print(f"{bcolors.FAIL}Exception during step execution: {e}{bcolors.ENDC}")
             traceback.print_exc()
 
-            # Log exception
-            if agent.log_file_path:
-                error_md = f"**Result:** 🔥 Exception\n"
-                error_md += f"**Error:** {str(e)}\n"
-                error_md += f"**Traceback:**\n```\n{traceback.format_exc()}\n```\n"
-                error_md += f"*Timestamp: {datetime.now().isoformat()}*"
-                write_to_log_file(agent, error_md)
-
             # Record in history and fail the intention
             beliefs_updated = {
                 name: {"value": b.value, "source": b.source, "certainty": b.certainty}
@@ -575,15 +542,6 @@ Consider the current beliefs when executing this task.
     )
 
     if step_succeeded:
-        # Log step success
-        if agent.log_file_path:
-            result_md = f"**Result:** ✅ Success\n"
-            result_md += f"**Output:** {step_result.output if step_result else 'N/A'}\n"
-            if retry_ctx.is_retry():
-                result_md += f"**Retries:** {retry_ctx.attempt_number}\n"
-            result_md += f"*Completed: {datetime.now().isoformat()}*"
-            write_to_log_file(agent, result_md)
-
         intention.increment_current_step(lambda **kwargs: log_states(agent, **kwargs))
 
         if intention.current_step >= len(intention.steps):
@@ -605,18 +563,6 @@ Consider the current beliefs when executing this task.
         print(
             f"{bcolors.WARNING}  Step {intention.current_step + 1} failed analysis after {retry_ctx.attempt_number} attempt(s). Intention progress paused.{bcolors.ENDC}"
         )
-
-        # Log step failure with retry info
-        if agent.log_file_path:
-            result_md = f"**Result:** ❌ Failed\n"
-            result_md += f"**Output:** {step_result.output if step_result else 'N/A'}\n"
-            if retry_ctx.attempt_number > 0:
-                result_md += f"**Retries Attempted:** {retry_ctx.attempt_number}\n"
-                result_md += f"**Retry History:**\n"
-                for failure in retry_ctx.failure_history:
-                    result_md += f"  - Attempt {failure['attempt'] + 1}: {failure['result'][:100]}...\n"
-            result_md += f"*Completed: {datetime.now().isoformat()}*"
-            write_to_log_file(agent, result_md)
 
         hitl_success = False
         hitl_updated_beliefs = False

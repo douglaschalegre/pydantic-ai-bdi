@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from datetime import datetime
 from helper.util import bcolors
 from bdi.schemas import ReconsiderResult, DesireStatus
+from bdi.logging import log_states
 
 if TYPE_CHECKING:
     from bdi.agent import BDI
@@ -166,9 +167,6 @@ async def reconsider_current_intention(agent: "BDI") -> None:
                     print(
                         f"{bcolors.DESIRE}  Setting desire '{desire.id}' back to PENDING.{bcolors.ENDC}"
                     )
-                    # Import log_states from logging module
-                    from bdi.logging import log_states
-
                     desire.update_status(DesireStatus.PENDING, lambda **kwargs: log_states(agent, **kwargs))
                     break
             log_states(agent, ["intentions", "desires"])
@@ -184,15 +182,6 @@ async def reconsider_current_intention(agent: "BDI") -> None:
         print(
             f"{bcolors.WARNING}  Fallback: Assuming plan is valid. Error in reconsideration will not block progress.{bcolors.ENDC}"
         )
-
-        # Log error to markdown file
-        if agent.log_file_path:
-            from bdi.logging import write_to_log_file
-
-            error_md = f"\n⚠️ **Reconsideration Error:**\n"
-            error_md += f"*Failed to evaluate plan validity. Assuming valid and continuing.*\n"
-            error_md += f"*Error: {str(recon_e)}*\n"
-            write_to_log_file(agent, error_md)
 
         # Return without invalidating the plan (same as if valid=True)
         return

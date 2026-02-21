@@ -16,7 +16,7 @@ from bdi.schemas import (
     PlanManipulationDirective,
     DesireStatus,
 )
-from bdi.logging import log_states, write_to_log_file
+from bdi.logging import log_states
 
 if TYPE_CHECKING:
     from pydantic_ai.agent import AgentRunResult
@@ -565,14 +565,6 @@ async def human_in_the_loop_intervention(
             f"{bcolors.SYSTEM}Starting human-in-the-loop intervention...{bcolors.ENDC}"
         )
 
-    # Log HITL start
-    if agent.log_file_path:
-        hitl_md = f"### Human-in-the-Loop Intervention\n"
-        hitl_md += f"**Desire:** {intention.desire_id}\n"
-        hitl_md += f"**Failed Step:** {failed_step.description}\n"
-        hitl_md += f"*Started: {datetime.now().isoformat()}*"
-        write_to_log_file(agent, hitl_md)
-
     # 1. Build failure context
     failure_context = build_failure_context(
         agent, intention, failed_step, step_result
@@ -664,17 +656,6 @@ async def human_in_the_loop_intervention(
     applied_successfully, beliefs_updated = await apply_user_guided_action(
         agent, directive, intention
     )
-
-    # Log HITL outcome
-    if agent.log_file_path:
-        outcome_md = f"**User Input:** {user_input}\n"
-        outcome_md += f"**Action Type:** {directive.manipulation_type}\n"
-        outcome_md += f"**LLM Interpretation:** {directive.user_guidance_summary}\n"
-        outcome_md += f"**Applied Successfully:** {'✅ Yes' if applied_successfully else '❌ No'}\n"
-        if beliefs_updated:
-            outcome_md += f"**Beliefs Updated:** ✅ Yes\n"
-        outcome_md += f"*Completed: {datetime.now().isoformat()}*"
-        write_to_log_file(agent, outcome_md)
 
     if applied_successfully:
         print(f"{bcolors.SYSTEM}User guidance applied successfully.{bcolors.ENDC}")
