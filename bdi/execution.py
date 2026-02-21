@@ -12,8 +12,10 @@ import json
 
 from helper.util import bcolors
 from bdi.schemas import IntentionStep, BeliefExtractionResult, DesireStatus, StepAssessmentResult
+from bdi.errors import is_validation_output_error
 from bdi.logging import log_states, format_beliefs_for_context
 from bdi.monitoring import generate_history_context
+from bdi.state_transitions import finalize_current_intention
 
 if TYPE_CHECKING:
     from pydantic_ai.agent import AgentRunResult
@@ -143,8 +145,7 @@ async def extract_relevant_beliefs_from_result(
 
     except Exception as extract_e:
         # Belief extraction is non-critical - log a warning but don't spam with tracebacks
-        error_msg = str(extract_e)
-        if "output validation" in error_msg.lower() or "validation error" in error_msg.lower():
+        if is_validation_output_error(extract_e):
             # Common case: LLM returned wrong format - just note it briefly
             if agent.verbose:
                 print(
@@ -335,17 +336,11 @@ async def execute_intentions(agent: "BDI") -> Dict:
         print(
             f"{bcolors.INTENTION}Intention for desire '{intention.desire_id}' already completed (found in execute_intentions).{bcolors.ENDC}"
         )
-        if intention in agent.intentions:
-            for desire in agent.desires:
-                if desire.id == intention.desire_id:
-                    if desire.status != DesireStatus.ACHIEVED:
-                        desire.update_status(
-                            DesireStatus.ACHIEVED,
-                            lambda **kwargs: log_states(agent, **kwargs),
-                        )
-                    break
-            agent.intentions.popleft()
-            log_states(agent, ["intentions", "desires"])
+        finalize_current_intention(
+            agent,
+            intention,
+            desire_status=DesireStatus.ACHIEVED,
+        )
         return {"hitl_modified_plan": False, "hitl_updated_beliefs": False}
 
     current_step = intention.steps[intention.current_step]
@@ -514,16 +509,12 @@ Consider the current beliefs when executing this task.
                 beliefs_updated=beliefs_updated,
             )
 
-            for desire in agent.desires:
-                if desire.id == intention.desire_id:
-                    desire.update_status(
-                        DesireStatus.FAILED,
-                        lambda **kwargs: log_states(agent, **kwargs),
-                    )
-                    break
-            if agent.intentions and agent.intentions[0] == intention:
-                agent.intentions.popleft()
-            log_states(agent, ["intentions", "desires"])
+            finalize_current_intention(
+                agent,
+                intention,
+                desire_status=DesireStatus.FAILED,
+                force_status_update=True,
+            )
 
             # Return early - no HITL for exceptions
             return {"hitl_modified_plan": False, "hitl_updated_beliefs": False}
@@ -548,16 +539,11 @@ Consider the current beliefs when executing this task.
             print(
                 f"{bcolors.INTENTION}Completed final step. Intention for desire '{intention.desire_id}' finished.{bcolors.ENDC}"
             )
-            for desire in agent.desires:
-                if desire.id == intention.desire_id:
-                    desire.update_status(
-                        DesireStatus.ACHIEVED,
-                        lambda **kwargs: log_states(agent, **kwargs),
-                    )
-                    break
-            if agent.intentions and agent.intentions[0] == intention:
-                agent.intentions.popleft()
-            log_states(agent, ["intentions", "desires"])
+            finalize_current_intention(
+                agent,
+                intention,
+                desire_status=DesireStatus.ACHIEVED,
+            )
     else:
         # Step failed after all retries - now trigger HITL if enabled
         print(

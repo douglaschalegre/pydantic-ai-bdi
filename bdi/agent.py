@@ -10,6 +10,7 @@ from collections import deque
 from pydantic_ai import Agent
 from helper.util import bcolors
 from bdi.schemas import BeliefSet, Desire, BeliefExtractionResult, generate_desire_id
+from bdi.errors import is_validation_output_error
 from bdi.logging import configure_terminal_output_mirror, log_states
 from bdi.planning import generate_intentions_from_desires
 from bdi.execution import execute_intentions
@@ -150,8 +151,7 @@ class BDI(Agent, Generic[T]):
 
         except Exception as e:
             # Belief extraction is non-critical - log briefly and continue
-            error_msg = str(e)
-            if "output validation" in error_msg.lower() or "validation error" in error_msg.lower():
+            if is_validation_output_error(e):
                 if self.verbose:
                     print(
                         f"{bcolors.WARNING}Initial belief extraction skipped: LLM output format issue.{bcolors.ENDC}"

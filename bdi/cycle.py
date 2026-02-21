@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from helper.util import bcolors
 from bdi.schemas import DesireStatus, Desire, generate_desire_id
+from bdi.io_helpers import is_exit_command
 from bdi.logging import log_states
 from bdi.planning import generate_intentions_from_desires
 from bdi.execution import execute_intentions
@@ -107,7 +108,7 @@ async def bdi_cycle(agent: "BDI") -> str:
                 print(f"\n{bcolors.WARNING}Input interrupted.{bcolors.ENDC}")
                 return "interrupted"
 
-            if not user_input or user_input.lower() in ["quit", "exit", "q"]:
+            if not user_input or is_exit_command(user_input):
                 print(f"{bcolors.SYSTEM}User requested stop.{bcolors.ENDC}")
                 return "stopped"
 

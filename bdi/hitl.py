@@ -16,7 +16,13 @@ from bdi.schemas import (
     PlanManipulationDirective,
     DesireStatus,
 )
+from bdi.io_helpers import is_exit_command
 from bdi.logging import log_states
+from bdi.state_transitions import (
+    finalize_current_intention,
+    remove_intention,
+    update_desire_status,
+)
 
 if TYPE_CHECKING:
     from pydantic_ai.agent import AgentRunResult
@@ -309,33 +315,28 @@ async def handle_user_abort_request(agent: "BDI", intention: "Intention") -> Non
     )
     original_desire_id = intention.desire_id
 
-    if agent.intentions and agent.intentions[0] == intention:
-        agent.intentions.popleft()
+    removal_result = remove_intention(agent, intention)
+    if removal_result == "current":
         log_states(
             agent,
             ["intentions"],
             message=f"Intention for desire '{original_desire_id}' removed due to user abort.",
         )
+    elif removal_result == "queued":
+        log_states(
+            agent,
+            ["intentions"],
+            message=f"Intention for desire '{original_desire_id}' (not current) removed due to user abort.",
+        )
     else:
-        try:
-            agent.intentions.remove(intention)
-            log_states(
-                agent,
-                ["intentions"],
-                message=f"Intention for desire '{original_desire_id}' (not current) removed due to user abort.",
-            )
-        except ValueError:
-            print(
-                f"{bcolors.WARNING}  Warning: Intention for desire '{original_desire_id}' not found in queue during abort.{bcolors.ENDC}"
-            )
+        print(
+            f"{bcolors.WARNING}  Warning: Intention for desire '{original_desire_id}' not found in queue during abort.{bcolors.ENDC}"
+        )
 
-    for desire_obj in agent.desires:
-        if desire_obj.id == original_desire_id:
-            desire_obj.update_status(DesireStatus.PENDING, lambda **kwargs: log_states(agent, **kwargs))
-            print(
-                f"{bcolors.DESIRE}  Desire '{original_desire_id}' status set to PENDING for potential replanning.{bcolors.ENDC}"
-            )
-            break
+    if update_desire_status(agent, original_desire_id, DesireStatus.PENDING):
+        print(
+            f"{bcolors.DESIRE}  Desire '{original_desire_id}' status set to PENDING for potential replanning.{bcolors.ENDC}"
+        )
 
 
 async def apply_user_guided_action(
@@ -402,10 +403,10 @@ async def apply_user_guided_action(
 
     # THEN: Apply plan manipulation
     try:
-        if manip_type == "RETRY_CURRENT_AS_IS":
-            applied_successfully = True
+        async def _handle_retry_current_as_is() -> bool:
+            return True
 
-        elif manip_type == "MODIFY_CURRENT_AND_RETRY":
+        async def _handle_modify_current_and_retry() -> bool:
             if directive.current_step_modifications and idx < len(intention.steps):
                 step_to_modify = intention.steps[idx]
                 for (
@@ -418,114 +419,120 @@ async def apply_user_guided_action(
                         print(
                             f"{bcolors.WARNING}  Cannot modify unknown field '{field_name}' in step.{bcolors.ENDC}"
                         )
+
                 log_states(
                     agent,
                     ["intentions"],
                     message=f"Intention step {idx} modified by user guidance.",
                 )
-                applied_successfully = True
-            else:
-                print(
-                    f"{bcolors.WARNING}  No modifications provided or invalid step index for MODIFY_CURRENT_AND_RETRY. Retrying as is.{bcolors.ENDC}"
-                )
-                applied_successfully = True
+                return True
 
-        elif manip_type in [
-            "REPLACE_CURRENT_STEP_WITH_NEW",
-            "INSERT_NEW_STEPS_BEFORE_CURRENT",
-            "INSERT_NEW_STEPS_AFTER_CURRENT",
-            "REPLACE_REMAINDER_OF_PLAN",
-        ]:
-            if directive.new_steps_definition:
-                new_steps_list = [
-                    IntentionStep(**step_def)
-                    for step_def in directive.new_steps_definition
-                ]
+            print(
+                f"{bcolors.WARNING}  No modifications provided or invalid step index for MODIFY_CURRENT_AND_RETRY. Retrying as is.{bcolors.ENDC}"
+            )
+            return True
 
-                if manip_type == "REPLACE_CURRENT_STEP_WITH_NEW":
-                    if idx < len(intention.steps):
-                        intention.steps.pop(idx)
-                        for i, new_step in enumerate(new_steps_list):
-                            intention.steps.insert(idx + i, new_step)
-                    else:
-                        raise IndexError(
-                            "Invalid step index for REPLACE_CURRENT_STEP_WITH_NEW"
-                        )
-                elif manip_type == "INSERT_NEW_STEPS_BEFORE_CURRENT":
-                    for i, new_step in enumerate(new_steps_list):
-                        intention.steps.insert(idx + i, new_step)
-                elif manip_type == "INSERT_NEW_STEPS_AFTER_CURRENT":
-                    insert_point = idx + 1
-                    for i, new_step in enumerate(new_steps_list):
-                        intention.steps.insert(insert_point + i, new_step)
-                elif manip_type == "REPLACE_REMAINDER_OF_PLAN":
-                    intention.steps = intention.steps[:idx]
-                    intention.steps.extend(new_steps_list)
-                    if not intention.steps:
-                        print(
-                            f"{bcolors.WARNING}  Plan became empty after REPLACE_REMAINDER. Aborting intention.{bcolors.ENDC}"
-                        )
-                        await handle_user_abort_request(agent, intention)
-                        return (True, beliefs_updated)
-
-                log_states(
-                    agent,
-                    ["intentions"],
-                    message=f"Intention modified by user guidance ({manip_type}).",
-                )
-                applied_successfully = True
-            else:
+        async def _handle_step_list_manipulation() -> bool:
+            if not directive.new_steps_definition:
                 print(
                     f"{bcolors.WARNING}  No new steps provided for {manip_type}. Reconsidering.{bcolors.ENDC}"
                 )
-                applied_successfully = False
+                return False
 
-        elif manip_type == "SKIP_CURRENT_STEP":
-            if idx < len(intention.steps):
-                intention.increment_current_step(lambda **kwargs: log_states(agent, **kwargs))
-                if intention.current_step >= len(intention.steps):
-                    print(
-                        f"{bcolors.INTENTION}  Skipping step completed intention for desire '{intention.desire_id}'.{bcolors.ENDC}"
+            new_steps_list = [
+                IntentionStep(**step_def)
+                for step_def in directive.new_steps_definition
+            ]
+
+            if manip_type == "REPLACE_CURRENT_STEP_WITH_NEW":
+                if idx >= len(intention.steps):
+                    raise IndexError(
+                        "Invalid step index for REPLACE_CURRENT_STEP_WITH_NEW"
                     )
-                    for desire_obj in agent.desires:
-                        if desire_obj.id == intention.desire_id:
-                            desire_obj.update_status(
-                                DesireStatus.ACHIEVED, lambda **kwargs: log_states(agent, **kwargs)
-                            )
-                            break
-                    if agent.intentions and agent.intentions[0] == intention:
-                        agent.intentions.popleft()
-                    log_states(agent, ["intentions", "desires"])
-                applied_successfully = True
-            else:
+                intention.steps.pop(idx)
+                for i, new_step in enumerate(new_steps_list):
+                    intention.steps.insert(idx + i, new_step)
+            elif manip_type == "INSERT_NEW_STEPS_BEFORE_CURRENT":
+                for i, new_step in enumerate(new_steps_list):
+                    intention.steps.insert(idx + i, new_step)
+            elif manip_type == "INSERT_NEW_STEPS_AFTER_CURRENT":
+                insert_point = idx + 1
+                for i, new_step in enumerate(new_steps_list):
+                    intention.steps.insert(insert_point + i, new_step)
+            elif manip_type == "REPLACE_REMAINDER_OF_PLAN":
+                intention.steps = intention.steps[:idx]
+                intention.steps.extend(new_steps_list)
+                if not intention.steps:
+                    print(
+                        f"{bcolors.WARNING}  Plan became empty after REPLACE_REMAINDER. Aborting intention.{bcolors.ENDC}"
+                    )
+                    await handle_user_abort_request(agent, intention)
+                    return True
+
+            log_states(
+                agent,
+                ["intentions"],
+                message=f"Intention modified by user guidance ({manip_type}).",
+            )
+            return True
+
+        async def _handle_skip_current_step() -> bool:
+            if idx >= len(intention.steps):
                 print(
                     f"{bcolors.WARNING}  Cannot skip, already at end of plan or invalid index.{bcolors.ENDC}"
                 )
-                applied_successfully = False
+                return False
 
-        elif manip_type == "ABORT_INTENTION":
+            intention.increment_current_step(lambda **kwargs: log_states(agent, **kwargs))
+            if intention.current_step >= len(intention.steps):
+                print(
+                    f"{bcolors.INTENTION}  Skipping step completed intention for desire '{intention.desire_id}'.{bcolors.ENDC}"
+                )
+                finalize_current_intention(
+                    agent,
+                    intention,
+                    desire_status=DesireStatus.ACHIEVED,
+                )
+
+            return True
+
+        async def _handle_abort_intention() -> bool:
             await handle_user_abort_request(agent, intention)
-            applied_successfully = True
+            return True
 
-        elif manip_type == "UPDATE_BELIEFS_AND_RETRY":
-            # Beliefs already updated above, just retry the step
+        async def _handle_update_beliefs_and_retry() -> bool:
             if not directive.beliefs_to_update:
                 print(
                     f"{bcolors.WARNING}  User Guidance: Update beliefs, but no beliefs provided. Retrying as is.{bcolors.ENDC}"
                 )
-            applied_successfully = True
+            return True
 
-        elif manip_type == "COMMENT_NO_ACTION":
+        async def _handle_comment_no_action() -> bool:
             print(
                 f"{bcolors.SYSTEM}  User comment received, no direct action on plan. Reconsidering.{bcolors.ENDC}"
             )
-            applied_successfully = False
+            return False
 
-        else:
+        async def _handle_unknown() -> bool:
             print(
                 f"{bcolors.WARNING}  Unknown or unhandled manipulation_type: {manip_type}. Reconsidering.{bcolors.ENDC}"
             )
-            applied_successfully = False
+            return False
+
+        handlers = {
+            "RETRY_CURRENT_AS_IS": _handle_retry_current_as_is,
+            "MODIFY_CURRENT_AND_RETRY": _handle_modify_current_and_retry,
+            "REPLACE_CURRENT_STEP_WITH_NEW": _handle_step_list_manipulation,
+            "INSERT_NEW_STEPS_BEFORE_CURRENT": _handle_step_list_manipulation,
+            "INSERT_NEW_STEPS_AFTER_CURRENT": _handle_step_list_manipulation,
+            "REPLACE_REMAINDER_OF_PLAN": _handle_step_list_manipulation,
+            "SKIP_CURRENT_STEP": _handle_skip_current_step,
+            "ABORT_INTENTION": _handle_abort_intention,
+            "UPDATE_BELIEFS_AND_RETRY": _handle_update_beliefs_and_retry,
+            "COMMENT_NO_ACTION": _handle_comment_no_action,
+        }
+
+        applied_successfully = await handlers.get(manip_type, _handle_unknown)()
 
     except IndexError as e:
         print(
@@ -585,7 +592,7 @@ async def human_in_the_loop_intervention(
         )
         return (False, False)
 
-    if user_input.lower() in ["quit", "exit", "q"]:
+    if is_exit_command(user_input):
         print(
             f"{bcolors.SYSTEM}User chose to exit HITL. Continuing without guidance.{bcolors.ENDC}"
         )

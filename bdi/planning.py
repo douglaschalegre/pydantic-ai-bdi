@@ -13,6 +13,7 @@ from bdi.schemas import (
     HighLevelIntention,
     HighLevelIntentionList,
     DetailedStepList,
+    DesireStatus,
 )
 from bdi.logging import log_states
 
@@ -70,7 +71,11 @@ async def generate_intentions_from_desires(agent: "BDI") -> None:
         # User provided explicit intentions - use them directly
         # Associate all intentions with the first active/pending desire
         # (In most cases, explicit intentions relate to a single primary desire)
-        active_desires = [d for d in agent.desires if d.status.value in ["pending", "active"]]
+        active_desires = [
+            d
+            for d in agent.desires
+            if d.status in [DesireStatus.PENDING, DesireStatus.ACTIVE]
+        ]
         primary_desire_id = active_desires[0].id if active_desires else agent.desires[0].id
 
         print(

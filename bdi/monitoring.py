@@ -10,6 +10,7 @@ from datetime import datetime
 from helper.util import bcolors
 from bdi.schemas import ReconsiderResult, DesireStatus
 from bdi.logging import log_states
+from bdi.state_transitions import update_desire_status
 
 if TYPE_CHECKING:
     from bdi.agent import BDI
@@ -162,13 +163,14 @@ async def reconsider_current_intention(agent: "BDI") -> None:
             )
             invalid_intention = agent.intentions.popleft()
 
-            for desire in agent.desires:
-                if desire.id == invalid_intention.desire_id:
-                    print(
-                        f"{bcolors.DESIRE}  Setting desire '{desire.id}' back to PENDING.{bcolors.ENDC}"
-                    )
-                    desire.update_status(DesireStatus.PENDING, lambda **kwargs: log_states(agent, **kwargs))
-                    break
+            if update_desire_status(
+                agent,
+                invalid_intention.desire_id,
+                DesireStatus.PENDING,
+            ):
+                print(
+                    f"{bcolors.DESIRE}  Setting desire '{invalid_intention.desire_id}' back to PENDING.{bcolors.ENDC}"
+                )
             log_states(agent, ["intentions", "desires"])
 
     except Exception as recon_e:

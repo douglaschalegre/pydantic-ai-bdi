@@ -78,7 +78,7 @@ class BeliefExtractionResult(BaseModel):
     """Result of extracting beliefs from a step execution outcome."""
 
     beliefs: List[ExtractedBelief] = Field(
-        default=[],
+        default_factory=list,
         description="List of beliefs extracted from the step result",
     )
     explanation: str = Field(

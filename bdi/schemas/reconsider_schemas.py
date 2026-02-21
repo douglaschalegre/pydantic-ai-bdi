@@ -3,7 +3,6 @@
 This module contains data models for plan reconsideration and validity assessment.
 """
 
-from typing import Optional
 from pydantic import BaseModel
 
 

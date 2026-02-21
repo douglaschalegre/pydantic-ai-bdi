@@ -50,7 +50,7 @@ class Intention(BaseModel):
     )
     steps: List[IntentionStep]
     current_step: int = 0
-    step_history: List[StepHistory] = []
+    step_history: List[StepHistory] = Field(default_factory=list)
 
     def increment_current_step(self, logger: Callable):
         self.current_step += 1
