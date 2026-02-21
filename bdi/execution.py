@@ -265,6 +265,274 @@ async def analyze_step_outcome_and_update_beliefs(
     return step_success
 
 
+def _default_hitl_info() -> Dict[str, bool]:
+    return {"hitl_modified_plan": False, "hitl_updated_beliefs": False}
+
+
+def _snapshot_beliefs(agent: "BDI") -> Dict[str, Dict[str, Any]]:
+    return {
+        name: {"value": b.value, "source": b.source, "certainty": b.certainty}
+        for name, b in agent.beliefs.beliefs.items()
+    }
+
+
+def _build_retry_context(retry_ctx: StepRetryContext) -> str:
+    if not retry_ctx.failure_history:
+        return ""
+
+    lines = ["", "", "PREVIOUS ATTEMPT FAILURES:"]
+    for failure in retry_ctx.failure_history:
+        lines.append(f"- Attempt {failure['attempt'] + 1}: {failure['result']}")
+        if failure["beliefs"]:
+            lines.append(f"  Beliefs learned: {json.dumps(failure['beliefs'])}")
+    lines.append("")
+    lines.append("Please consider these failures and adjust your approach accordingly.")
+    return "\n".join(lines) + "\n"
+
+
+def _log_tool_debug_messages(agent: "BDI", step_result: "AgentRunResult") -> None:
+    if not agent.verbose or not hasattr(step_result, "all_messages"):
+        return
+
+    all_messages = step_result.all_messages()
+    if not all_messages:
+        return
+
+    print(f"{bcolors.SYSTEM}  === DEBUG: Tool Call Details ==={bcolors.ENDC}")
+    for msg in all_messages:
+        parts = getattr(msg, "parts", None)
+        if not parts:
+            continue
+
+        for part in parts:
+            tool_name = getattr(part, "tool_name", None)
+            if tool_name:
+                print(f"{bcolors.SYSTEM}    Tool: {tool_name}{bcolors.ENDC}")
+                args = getattr(part, "args", None)
+                if args is not None:
+                    print(f"{bcolors.SYSTEM}    Args: {args}{bcolors.ENDC}")
+                continue
+
+            if getattr(part, "tool_call_id", None):
+                content = getattr(part, "content", "")
+                content_preview = "<binary>" if isinstance(content, (bytes, bytearray)) else str(content)[:200]
+                print(
+                    f"{bcolors.SYSTEM}    Result: {content_preview}...{bcolors.ENDC}"
+                )
+
+    print(f"{bcolors.SYSTEM}  === End Tool Call Details ==={bcolors.ENDC}")
+
+
+async def _run_step_attempt(
+    agent: "BDI",
+    current_step: IntentionStep,
+    retry_ctx: StepRetryContext,
+) -> "AgentRunResult":
+    is_retry = retry_ctx.is_retry()
+    beliefs_context = format_beliefs_for_context(agent)
+    retry_context = _build_retry_context(retry_ctx) if is_retry else ""
+
+    if current_step.is_tool_call and current_step.tool_name:
+        if agent.verbose:
+            print(
+                f"{bcolors.SYSTEM}  Attempting tool call via self.run: {current_step.tool_name}({current_step.tool_params}){bcolors.ENDC}"
+            )
+
+        tool_prompt = build_tool_execution_prompt(
+            beliefs_context,
+            retry_context,
+            current_step.tool_name,
+            current_step.tool_params or {},
+            is_retry,
+        )
+        step_result = await agent.run(tool_prompt)
+        print(
+            f"{bcolors.SYSTEM}  Tool '{current_step.tool_name}' result: {step_result.output}{bcolors.ENDC}"
+        )
+        _log_tool_debug_messages(agent, step_result)
+        return step_result
+
+    if agent.verbose:
+        print(
+            f"{bcolors.SYSTEM}  Executing descriptive step via self.run: {current_step.description}{bcolors.ENDC}"
+        )
+
+    enhanced_prompt = build_descriptive_execution_prompt(
+        beliefs_context,
+        retry_context,
+        current_step.description,
+        is_retry,
+    )
+    step_result = await agent.run(enhanced_prompt)
+    if agent.verbose:
+        print(f"{bcolors.SYSTEM}  Step result: {step_result.output}{bcolors.ENDC}")
+
+    return step_result
+
+
+def _handle_step_execution_exception(
+    agent: "BDI",
+    intention,
+    current_step: IntentionStep,
+    error: Exception,
+) -> None:
+    print(f"{bcolors.FAIL}Exception during step execution: {error}{bcolors.ENDC}")
+    traceback.print_exc()
+
+    intention.add_to_history(
+        step=current_step,
+        result=f"Exception: {str(error)}",
+        success=False,
+        beliefs_updated=_snapshot_beliefs(agent),
+    )
+
+    finalize_current_intention(
+        agent,
+        intention,
+        desire_status=DesireStatus.FAILED,
+        force_status_update=True,
+    )
+
+
+async def _run_step_with_retries(
+    agent: "BDI",
+    intention,
+    current_step: IntentionStep,
+) -> tuple[
+    Optional["AgentRunResult"],
+    bool,
+    StepRetryContext,
+    Optional[Dict[str, bool]],
+]:
+    retry_ctx = StepRetryContext(attempt_number=0)
+    step_result: Optional["AgentRunResult"] = None
+    step_succeeded = False
+
+    while True:
+        if retry_ctx.is_retry():
+            attempt_label = (
+                f"(Attempt {retry_ctx.attempt_number + 1}/{MAX_STEP_RETRIES + 1})"
+            )
+            print(
+                f"{bcolors.WARNING}  Retrying step {intention.current_step + 1} {attempt_label}{bcolors.ENDC}"
+            )
+
+        try:
+            step_result = await _run_step_attempt(agent, current_step, retry_ctx)
+            step_succeeded = await analyze_step_outcome_and_update_beliefs(
+                agent,
+                current_step,
+                step_result,
+            )
+
+            if step_succeeded:
+                print(
+                    f"{bcolors.INTENTION}  Step {intention.current_step + 1} successful{' after retry' if retry_ctx.is_retry() else ''}.{bcolors.ENDC}"
+                )
+                break
+
+            extracted_beliefs = await extract_relevant_beliefs_from_result(
+                agent,
+                current_step,
+                step_result,
+                step_succeeded,
+            )
+            retry_ctx.record_failure(
+                result_output=step_result.output if step_result else "No result",
+                beliefs_extracted=extracted_beliefs,
+            )
+            retry_ctx.attempt_number += 1
+
+            if retry_ctx.should_retry():
+                print(
+                    f"{bcolors.WARNING}  Step {intention.current_step + 1} failed. Auto-retry enabled (attempt {retry_ctx.attempt_number + 1}/{MAX_STEP_RETRIES + 1}).{bcolors.ENDC}"
+                )
+                continue
+
+            print(
+                f"{bcolors.WARNING}  Step {intention.current_step + 1} failed after {retry_ctx.attempt_number} retries. Escalating...{bcolors.ENDC}"
+            )
+            break
+
+        except Exception as error:
+            _handle_step_execution_exception(agent, intention, current_step, error)
+            return None, False, retry_ctx, _default_hitl_info()
+
+    return step_result, step_succeeded, retry_ctx, None
+
+
+def _record_step_outcome(
+    agent: "BDI",
+    intention,
+    current_step: IntentionStep,
+    step_result: Optional["AgentRunResult"],
+    step_succeeded: bool,
+) -> None:
+    intention.add_to_history(
+        step=current_step,
+        result=step_result.output if step_result else "No result",
+        success=step_succeeded,
+        beliefs_updated=_snapshot_beliefs(agent),
+    )
+
+
+def _handle_successful_step(agent: "BDI", intention) -> None:
+    intention.increment_current_step(lambda **kwargs: log_states(agent, **kwargs))
+
+    if intention.current_step >= len(intention.steps):
+        print(
+            f"{bcolors.INTENTION}Completed final step. Intention for desire '{intention.desire_id}' finished.{bcolors.ENDC}"
+        )
+        finalize_current_intention(
+            agent,
+            intention,
+            desire_status=DesireStatus.ACHIEVED,
+        )
+
+
+async def _handle_failed_step(
+    agent: "BDI",
+    intention,
+    current_step: IntentionStep,
+    step_result: Optional["AgentRunResult"],
+    retry_ctx: StepRetryContext,
+) -> Dict[str, bool]:
+    print(
+        f"{bcolors.WARNING}  Step {intention.current_step + 1} failed analysis after {retry_ctx.attempt_number} attempt(s). Intention progress paused.{bcolors.ENDC}"
+    )
+
+    hitl_success = False
+    hitl_updated_beliefs = False
+    if agent.enable_human_in_the_loop:
+        try:
+            from bdi.hitl import human_in_the_loop_intervention
+
+            hitl_success, hitl_updated_beliefs = await human_in_the_loop_intervention(
+                agent,
+                intention,
+                current_step,
+                step_result,
+            )
+        except Exception as hitl_e:
+            print(
+                f"{bcolors.FAIL}Error during HITL intervention: {hitl_e}{bcolors.ENDC}"
+            )
+            if agent.verbose:
+                traceback.print_exc()
+
+    if hitl_success:
+        print(
+            f"{bcolors.SYSTEM}  HITL intervention successful. Step will be retried in next cycle.{bcolors.ENDC}"
+        )
+        return {
+            "hitl_modified_plan": True,
+            "hitl_updated_beliefs": hitl_updated_beliefs,
+        }
+
+    log_states(agent, ["beliefs"])
+    return _default_hitl_info()
+
+
 async def execute_intentions(agent: "BDI") -> Dict:
     """Execute one step of the current intention, analyze outcome, and handle success/failure.
 
@@ -280,10 +548,9 @@ async def execute_intentions(agent: "BDI") -> Dict:
     """
     if not agent.intentions:
         print(f"{bcolors.SYSTEM}No intentions to execute.{bcolors.ENDC}")
-        return {"hitl_modified_plan": False, "hitl_updated_beliefs": False}
+        return _default_hitl_info()
 
     intention = agent.intentions[0]
-
     if intention.current_step >= len(intention.steps):
         print(
             f"{bcolors.INTENTION}Intention for desire '{intention.desire_id}' already completed (found in execute_intentions).{bcolors.ENDC}"
@@ -293,243 +560,41 @@ async def execute_intentions(agent: "BDI") -> Dict:
             intention,
             desire_status=DesireStatus.ACHIEVED,
         )
-        return {"hitl_modified_plan": False, "hitl_updated_beliefs": False}
+        return _default_hitl_info()
 
     current_step = intention.steps[intention.current_step]
     print(
         f"{bcolors.INTENTION}Executing step {intention.current_step + 1}/{len(intention.steps)} for desire '{intention.desire_id}': {current_step.description}{bcolors.ENDC}"
     )
 
-    # Initialize retry context
-    retry_ctx = StepRetryContext(attempt_number=0)
+    (
+        step_result,
+        step_succeeded,
+        retry_ctx,
+        early_return,
+    ) = await _run_step_with_retries(agent, intention, current_step)
+    if early_return is not None:
+        return early_return
 
-    step_result: Optional["AgentRunResult"] = None
-    step_succeeded: bool = False
-
-    # RETRY LOOP - Will execute at least once (attempt_number=0)
-    while True:
-        # Determine if this is a retry attempt
-        is_retry = retry_ctx.is_retry()
-        attempt_label = (
-            f"(Attempt {retry_ctx.attempt_number + 1}/{MAX_STEP_RETRIES + 1})"
-        )
-
-        if is_retry:
-            print(
-                f"{bcolors.WARNING}  Retrying step {intention.current_step + 1} {attempt_label}{bcolors.ENDC}"
-            )
-
-        try:
-            # Get current beliefs to provide context for execution
-            beliefs_context = format_beliefs_for_context(agent)
-
-            # Build retry-aware prompt context
-            retry_context = ""
-            if is_retry and retry_ctx.failure_history:
-                retry_context = "\n\nPREVIOUS ATTEMPT FAILURES:\n"
-                for failure in retry_ctx.failure_history:
-                    retry_context += (
-                        f"- Attempt {failure['attempt'] + 1}: {failure['result']}\n"
-                    )
-                    if failure["beliefs"]:
-                        retry_context += (
-                            f"  Beliefs learned: {json.dumps(failure['beliefs'])}\n"
-                        )
-                retry_context += "\nPlease consider these failures and adjust your approach accordingly.\n"
-
-            if current_step.is_tool_call and current_step.tool_name:
-                if agent.verbose:
-                    print(
-                        f"{bcolors.SYSTEM}  Attempting tool call via self.run: {current_step.tool_name}({current_step.tool_params}){bcolors.ENDC}"
-                    )
-
-                # Enhanced tool call prompt with belief context AND retry context
-                tool_prompt = build_tool_execution_prompt(
-                    beliefs_context,
-                    retry_context,
-                    current_step.tool_name,
-                    current_step.tool_params or {},
-                    is_retry,
-                )
-                step_result = await agent.run(tool_prompt)
-                print(
-                    f"{bcolors.SYSTEM}  Tool '{current_step.tool_name}' result: {step_result.output}{bcolors.ENDC}"
-                )
-
-                # DEBUG: Log all tool calls that occurred
-                if agent.verbose and step_result.all_messages():
-                    print(
-                        f"{bcolors.SYSTEM}  === DEBUG: Tool Call Details ==={bcolors.ENDC}"
-                    )
-                    for msg in step_result.all_messages():
-                        if hasattr(msg, "parts"):
-                            for part in msg.parts:
-                                if hasattr(part, "tool_name"):
-                                    print(
-                                        f"{bcolors.SYSTEM}    Tool: {part.tool_name}{bcolors.ENDC}"
-                                    )
-                                    if hasattr(part, "args"):
-                                        print(
-                                            f"{bcolors.SYSTEM}    Args: {part.args}{bcolors.ENDC}"
-                                        )
-                                elif hasattr(part, "tool_call_id"):
-                                    print(
-                                        f"{bcolors.SYSTEM}    Result: {part.content[:200]}...{bcolors.ENDC}"
-                                    )
-                    print(
-                        f"{bcolors.SYSTEM}  === End Tool Call Details ==={bcolors.ENDC}"
-                    )
-            else:
-                if agent.verbose:
-                    print(
-                        f"{bcolors.SYSTEM}  Executing descriptive step via self.run: {current_step.description}{bcolors.ENDC}"
-                    )
-
-                # Enhanced descriptive step prompt with belief context AND retry context
-                enhanced_prompt = build_descriptive_execution_prompt(
-                    beliefs_context,
-                    retry_context,
-                    current_step.description,
-                    is_retry,
-                )
-                step_result = await agent.run(enhanced_prompt)
-                if agent.verbose:
-                    print(
-                        f"{bcolors.SYSTEM}  Step result: {step_result.output}{bcolors.ENDC}"
-                    )
-
-            # Analyze outcome
-            step_succeeded = await analyze_step_outcome_and_update_beliefs(
-                agent, current_step, step_result
-            )
-
-            # If step succeeded, break out of retry loop
-            if step_succeeded:
-                print(
-                    f"{bcolors.INTENTION}  Step {intention.current_step + 1} successful{' after retry' if is_retry else ''}.{bcolors.ENDC}"
-                )
-                break
-
-            # Step failed - extract beliefs from failure for retry context
-            extracted_beliefs = await extract_relevant_beliefs_from_result(
-                agent, current_step, step_result, step_succeeded
-            )
-
-            # Record this failure in retry context
-            retry_ctx.record_failure(
-                result_output=step_result.output if step_result else "No result",
-                beliefs_extracted=extracted_beliefs,
-            )
-
-            # Increment attempt counter
-            retry_ctx.attempt_number += 1
-
-            # Check if we should retry or escalate to HITL
-            if retry_ctx.should_retry():
-                print(
-                    f"{bcolors.WARNING}  Step {intention.current_step + 1} failed. Auto-retry enabled (attempt {retry_ctx.attempt_number + 1}/{MAX_STEP_RETRIES + 1}).{bcolors.ENDC}"
-                )
-                # Continue to next iteration of while loop (retry)
-                continue
-            else:
-                # Retry exhausted, break to handle HITL or failure
-                print(
-                    f"{bcolors.WARNING}  Step {intention.current_step + 1} failed after {retry_ctx.attempt_number} retries. Escalating...{bcolors.ENDC}"
-                )
-                break
-
-        except Exception as e:
-            # Exception during execution - do NOT retry, fail immediately
-            print(f"{bcolors.FAIL}Exception during step execution: {e}{bcolors.ENDC}")
-            traceback.print_exc()
-
-            # Record in history and fail the intention
-            beliefs_updated = {
-                name: {"value": b.value, "source": b.source, "certainty": b.certainty}
-                for name, b in agent.beliefs.beliefs.items()
-            }
-            intention.add_to_history(
-                step=current_step,
-                result=f"Exception: {str(e)}",
-                success=False,
-                beliefs_updated=beliefs_updated,
-            )
-
-            finalize_current_intention(
-                agent,
-                intention,
-                desire_status=DesireStatus.FAILED,
-                force_status_update=True,
-            )
-
-            # Return early - no HITL for exceptions
-            return {"hitl_modified_plan": False, "hitl_updated_beliefs": False}
-
-    # END OF RETRY LOOP - Now handle success or failure with HITL
-
-    beliefs_updated = {
-        name: {"value": b.value, "source": b.source, "certainty": b.certainty}
-        for name, b in agent.beliefs.beliefs.items()
-    }
-    intention.add_to_history(
-        step=current_step,
-        result=step_result.output if step_result else "No result",
-        success=step_succeeded,
-        beliefs_updated=beliefs_updated,
+    _record_step_outcome(
+        agent,
+        intention,
+        current_step,
+        step_result,
+        step_succeeded,
     )
 
     if step_succeeded:
-        intention.increment_current_step(lambda **kwargs: log_states(agent, **kwargs))
+        _handle_successful_step(agent, intention)
+        return _default_hitl_info()
 
-        if intention.current_step >= len(intention.steps):
-            print(
-                f"{bcolors.INTENTION}Completed final step. Intention for desire '{intention.desire_id}' finished.{bcolors.ENDC}"
-            )
-            finalize_current_intention(
-                agent,
-                intention,
-                desire_status=DesireStatus.ACHIEVED,
-            )
-    else:
-        # Step failed after all retries - now trigger HITL if enabled
-        print(
-            f"{bcolors.WARNING}  Step {intention.current_step + 1} failed analysis after {retry_ctx.attempt_number} attempt(s). Intention progress paused.{bcolors.ENDC}"
-        )
-
-        hitl_success = False
-        hitl_updated_beliefs = False
-        if agent.enable_human_in_the_loop:
-            try:
-                # Import here to avoid circular dependency
-                from bdi.hitl import human_in_the_loop_intervention
-
-                (
-                    hitl_success,
-                    hitl_updated_beliefs,
-                ) = await human_in_the_loop_intervention(
-                    agent, intention, current_step, step_result
-                )
-            except Exception as hitl_e:
-                print(
-                    f"{bcolors.FAIL}Error during HITL intervention: {hitl_e}{bcolors.ENDC}"
-                )
-                if agent.verbose:
-                    traceback.print_exc()
-
-        if hitl_success:
-            print(
-                f"{bcolors.SYSTEM}  HITL intervention successful. Step will be retried in next cycle.{bcolors.ENDC}"
-            )
-            # Return HITL info to skip reconsideration in bdi_cycle
-            return {
-                "hitl_modified_plan": True,
-                "hitl_updated_beliefs": hitl_updated_beliefs,
-            }
-        else:
-            log_states(agent, ["beliefs"])
-
-    # Normal completion (no HITL intervention)
-    return {"hitl_modified_plan": False, "hitl_updated_beliefs": False}
+    return await _handle_failed_step(
+        agent,
+        intention,
+        current_step,
+        step_result,
+        retry_ctx,
+    )
 
 
 __all__ = [
