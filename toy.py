@@ -32,7 +32,13 @@ fs = MCPServerStdio(
     tool_prefix="fs",
     timeout=60,
 )
-MCP_SERVERS = [git_server, fs]
+playwright = MCPServerStdio(
+    "npx",
+    args=["-y", "@playwright/mcp@latest"],
+    tool_prefix="playwright",
+    timeout=300,
+)
+MCP_SERVERS = [git_server, fs, playwright]
 
 agent = BDI(
     model,
