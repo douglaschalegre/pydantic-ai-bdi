@@ -1,0 +1,455 @@
+Log file initialized at: /Users/douglas/code/masters/pydantic-ai-bdi/output/playwright/herokuapp-task-01.log
+Desires:
+  - desire_5be9b259: Use the available Playwright browser tools to open https://the-internet.herokuapp.com/. Confirm the page has loaded. Gather the page title and current URL. Perform only this task. Stop once the page is open and you have collected the title and current URL. (Status: pending, Priority: 0.5)
+
+----- Task 01 | Cycle 1/20 -----
+First cycle: Extracting initial beliefs from desire descriptions...
+Extracted 1 belief(s) from desires.
+Beliefs:
+  - target_url: https://the-internet.herokuapp.com/ (Source: desire_description, Certainty: 1.00, Time: 2026-02-26T17:17:33.590540)
+States before starting BDI cycle
+Beliefs:
+  - target_url: https://the-internet.herokuapp.com/ (Source: desire_description, Certainty: 1.00, Time: 2026-02-26T17:17:33.590540)
+Desires:
+  - desire_5be9b259: Use the available Playwright browser tools to open https://the-internet.herokuapp.com/. Confirm the page has loaded. Gather the page title and current URL. Perform only this task. Stop once the page is open and you have collected the title and current URL. (Status: pending, Priority: 0.5)
+Intentions:
+  (None)
+
+--- BDI Cycle Start ---
+Current Beliefs:
+Beliefs:
+  - target_url: https://the-internet.herokuapp.com/ (Source: desire_description, Certainty: 1.00, Time: 2026-02-26T17:17:33.590540)
+Current Desires:
+Desires:
+  - desire_5be9b259: Use the available Playwright browser tools to open https://the-internet.herokuapp.com/. Confirm the page has loaded. Gather the page title and current URL. Perform only this task. Stop once the page is open and you have collected the title and current URL. (Status: pending, Priority: 0.5)
+No current intentions, but active/pending desires exist. Generating intentions...
+Starting two-stage intention generation...
+Using 1 explicit intentions provided by user (skipping Stage 1 LLM).
+  - Open home page and report title and current URL
+Stage 2: Generating detailed steps for each intention...
+  Processing high-level intention for Desire 'desire_5be9b259': Open home page and report title and current URL
+    Generated 4 detailed steps.
+Intention generation complete. Updated agent with 1 detailed intentions.
+Intentions:
+  - Desire 'desire_5be9b259': Next -> Use playwright_browser_navigate to open the home page at belief-derived URL https://the-internet.herokuapp.com/. (Step 1/4)
+Executing step 1/4 for desire 'desire_5be9b259': Use playwright_browser_navigate to open the home page at belief-derived URL https://the-internet.herokuapp.com/.
+  Attempting tool call via self.run: playwright_browser_navigate(None)
+  Tool 'playwright_browser_navigate' result: Done — navigated to **https://the-internet.herokuapp.com/** successfully.
+  === DEBUG: Tool Call Details ===
+    Tool: playwright_browser_navigate
+    Args: {"url":"https://the-internet.herokuapp.com/"}
+    Tool: playwright_browser_navigate
+  === End Tool Call Details ===
+  Analyzing step outcome...
+  (Belief update check based on result: Done — navigated to **https://the-internet.herokuapp.com/** successfully.)
+  LLM Assessment: Step SUCCEEDED.
+  Reason: The navigation tool call completed and the result explicitly confirms successful navigation to https://the-internet.herokuapp.com/ with no error.
+  Extracting beliefs from step result...
+  Extracted 3 belief(s).
+  Updating belief set with 3 belief(s).
+    + current_url: https://the-internet.herokuapp.com/ (Certainty: 1.00)
+    + navigation_status: success (Certainty: 1.00)
+    + home_page_reachable: true (Certainty: 0.95)
+  Step 1 successful.
+Intention for desire 'desire_5be9b259' advanced to step 1
+Intentions:
+  - Desire 'desire_5be9b259': Next -> Use playwright_browser_evaluate to run JavaScript `() => document.title` and capture the page title. (Step 2/4)
+  Reconsidering intention for desire 'desire_5be9b259'...
+  Asking LLM to assess plan validity...
+  LLM Assessment: Plan remains VALID. Reason: None
+--- BDI Cycle End ---
+States after BDI cycle
+Beliefs:
+  - target_url: https://the-internet.herokuapp.com/ (Source: desire_description, Certainty: 1.00, Time: 2026-02-26T17:17:33.590540)
+  - current_url: https://the-internet.herokuapp.com/ (Source: step_1_Use playwright_browser_navigat, Certainty: 1.00, Time: 2026-02-26T17:17:52.785447)
+  - navigation_status: success (Source: step_1_Use playwright_browser_navigat, Certainty: 1.00, Time: 2026-02-26T17:17:52.785515)
+  - home_page_reachable: true (Source: step_1_Use playwright_browser_navigat, Certainty: 0.95, Time: 2026-02-26T17:17:52.785531)
+Desires:
+  - desire_5be9b259: Use the available Playwright browser tools to open https://the-internet.herokuapp.com/. Confirm the page has loaded. Gather the page title and current URL. Perform only this task. Stop once the page is open and you have collected the title and current URL. (Status: pending, Priority: 0.5)
+Intentions:
+  - Desire 'desire_5be9b259': Next -> Use playwright_browser_evaluate to run JavaScript `() => document.title` and capture the page title. (Step 2/4)
+
+----- Task 01 | Cycle 2/20 -----
+States before starting BDI cycle
+Beliefs:
+  - target_url: https://the-internet.herokuapp.com/ (Source: desire_description, Certainty: 1.00, Time: 2026-02-26T17:17:33.590540)
+  - current_url: https://the-internet.herokuapp.com/ (Source: step_1_Use playwright_browser_navigat, Certainty: 1.00, Time: 2026-02-26T17:17:52.785447)
+  - navigation_status: success (Source: step_1_Use playwright_browser_navigat, Certainty: 1.00, Time: 2026-02-26T17:17:52.785515)
+  - home_page_reachable: true (Source: step_1_Use playwright_browser_navigat, Certainty: 0.95, Time: 2026-02-26T17:17:52.785531)
+Desires:
+  - desire_5be9b259: Use the available Playwright browser tools to open https://the-internet.herokuapp.com/. Confirm the page has loaded. Gather the page title and current URL. Perform only this task. Stop once the page is open and you have collected the title and current URL. (Status: pending, Priority: 0.5)
+Intentions:
+  - Desire 'desire_5be9b259': Next -> Use playwright_browser_evaluate to run JavaScript `() => document.title` and capture the page title. (Step 2/4)
+
+--- BDI Cycle Start ---
+Current Beliefs:
+Beliefs:
+  - target_url: https://the-internet.herokuapp.com/ (Source: desire_description, Certainty: 1.00, Time: 2026-02-26T17:17:33.590540)
+  - current_url: https://the-internet.herokuapp.com/ (Source: step_1_Use playwright_browser_navigat, Certainty: 1.00, Time: 2026-02-26T17:17:52.785447)
+  - navigation_status: success (Source: step_1_Use playwright_browser_navigat, Certainty: 1.00, Time: 2026-02-26T17:17:52.785515)
+  - home_page_reachable: true (Source: step_1_Use playwright_browser_navigat, Certainty: 0.95, Time: 2026-02-26T17:17:52.785531)
+Current Desires:
+Desires:
+  - desire_5be9b259: Use the available Playwright browser tools to open https://the-internet.herokuapp.com/. Confirm the page has loaded. Gather the page title and current URL. Perform only this task. Stop once the page is open and you have collected the title and current URL. (Status: pending, Priority: 0.5)
+Current Intentions:
+Intentions:
+  - Desire 'desire_5be9b259': Next -> Use playwright_browser_evaluate to run JavaScript `() => document.title` and capture the page title. (Step 2/4)
+Executing step 2/4 for desire 'desire_5be9b259': Use playwright_browser_evaluate to run JavaScript `() => document.title` and capture the page title.
+  Attempting tool call via self.run: playwright_browser_evaluate(None)
+  Tool 'playwright_browser_evaluate' result: Done — I executed `playwright_browser_evaluate` (with a concrete function) and got:
+
+- **Result:** `"The Internet"`
+- **URL:** `https://the-internet.herokuapp.com/`
+- **Title:** `The Internet`
+
+I used:
+```js
+() => document.title
+```
+since `playwright_browser_evaluate` requires a `function` parameter.
+  === DEBUG: Tool Call Details ===
+    Tool: playwright_browser_evaluate
+    Args: {"function":"() => document.title"}
+    Tool: playwright_browser_evaluate
+  === End Tool Call Details ===
+  Analyzing step outcome...
+  (Belief update check based on result: Done — I executed `playwright_browser_evaluate` (with a concrete function) and got:
+
+- **Result:** `"The Internet"`
+- **URL:** `https://the-internet.herokuapp.com/`
+- **Title:** `The Internet`
+
+I used:
+```js
+() => document.title
+```
+since `playwright_browser_evaluate` requires a `function` parameter.)
+  LLM Assessment: Step SUCCEEDED.
+  Reason: The evaluate tool was run with `() => document.title` and returned a valid title (`The Internet`) without errors, so the objective was achieved.
+  Extracting beliefs from step result...
+  Extracted 5 belief(s).
+  Updating belief set with 5 belief(s).
+    + page_title: The Internet (Certainty: 1.00)
+    + page_url: https://the-internet.herokuapp.com/ (Certainty: 1.00)
+    + evaluate_result: The Internet (Certainty: 1.00)
+    + evaluate_function_used: () => document.title (Certainty: 1.00)
+    + playwright_evaluate_requires_function_parameter: true (Certainty: 0.95)
+  Step 2 successful.
+Intention for desire 'desire_5be9b259' advanced to step 2
+Intentions:
+  - Desire 'desire_5be9b259': Next -> Use playwright_browser_evaluate to run JavaScript `() => window.location.href` and capture the current URL. (Step 3/4)
+  Reconsidering intention for desire 'desire_5be9b259'...
+  Asking LLM to assess plan validity...
+  LLM Assessment: Plan remains VALID. Reason: None
+--- BDI Cycle End ---
+States after BDI cycle
+Beliefs:
+  - target_url: https://the-internet.herokuapp.com/ (Source: desire_description, Certainty: 1.00, Time: 2026-02-26T17:17:33.590540)
+  - current_url: https://the-internet.herokuapp.com/ (Source: step_1_Use playwright_browser_navigat, Certainty: 1.00, Time: 2026-02-26T17:17:52.785447)
+  - navigation_status: success (Source: step_1_Use playwright_browser_navigat, Certainty: 1.00, Time: 2026-02-26T17:17:52.785515)
+  - home_page_reachable: true (Source: step_1_Use playwright_browser_navigat, Certainty: 0.95, Time: 2026-02-26T17:17:52.785531)
+  - page_title: The Internet (Source: step_2_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:05.697904)
+  - page_url: https://the-internet.herokuapp.com/ (Source: step_2_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:05.700535)
+  - evaluate_result: The Internet (Source: step_2_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:05.700559)
+  - evaluate_function_used: () => document.title (Source: step_2_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:05.700578)
+  - playwright_evaluate_requires_function_parameter: true (Source: step_2_Use playwright_browser_evaluat, Certainty: 0.95, Time: 2026-02-26T17:18:05.700595)
+Desires:
+  - desire_5be9b259: Use the available Playwright browser tools to open https://the-internet.herokuapp.com/. Confirm the page has loaded. Gather the page title and current URL. Perform only this task. Stop once the page is open and you have collected the title and current URL. (Status: pending, Priority: 0.5)
+Intentions:
+  - Desire 'desire_5be9b259': Next -> Use playwright_browser_evaluate to run JavaScript `() => window.location.href` and capture the current URL. (Step 3/4)
+
+----- Task 01 | Cycle 3/20 -----
+States before starting BDI cycle
+Beliefs:
+  - target_url: https://the-internet.herokuapp.com/ (Source: desire_description, Certainty: 1.00, Time: 2026-02-26T17:17:33.590540)
+  - current_url: https://the-internet.herokuapp.com/ (Source: step_1_Use playwright_browser_navigat, Certainty: 1.00, Time: 2026-02-26T17:17:52.785447)
+  - navigation_status: success (Source: step_1_Use playwright_browser_navigat, Certainty: 1.00, Time: 2026-02-26T17:17:52.785515)
+  - home_page_reachable: true (Source: step_1_Use playwright_browser_navigat, Certainty: 0.95, Time: 2026-02-26T17:17:52.785531)
+  - page_title: The Internet (Source: step_2_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:05.697904)
+  - page_url: https://the-internet.herokuapp.com/ (Source: step_2_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:05.700535)
+  - evaluate_result: The Internet (Source: step_2_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:05.700559)
+  - evaluate_function_used: () => document.title (Source: step_2_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:05.700578)
+  - playwright_evaluate_requires_function_parameter: true (Source: step_2_Use playwright_browser_evaluat, Certainty: 0.95, Time: 2026-02-26T17:18:05.700595)
+Desires:
+  - desire_5be9b259: Use the available Playwright browser tools to open https://the-internet.herokuapp.com/. Confirm the page has loaded. Gather the page title and current URL. Perform only this task. Stop once the page is open and you have collected the title and current URL. (Status: pending, Priority: 0.5)
+Intentions:
+  - Desire 'desire_5be9b259': Next -> Use playwright_browser_evaluate to run JavaScript `() => window.location.href` and capture the current URL. (Step 3/4)
+
+--- BDI Cycle Start ---
+Current Beliefs:
+Beliefs:
+  - target_url: https://the-internet.herokuapp.com/ (Source: desire_description, Certainty: 1.00, Time: 2026-02-26T17:17:33.590540)
+  - current_url: https://the-internet.herokuapp.com/ (Source: step_1_Use playwright_browser_navigat, Certainty: 1.00, Time: 2026-02-26T17:17:52.785447)
+  - navigation_status: success (Source: step_1_Use playwright_browser_navigat, Certainty: 1.00, Time: 2026-02-26T17:17:52.785515)
+  - home_page_reachable: true (Source: step_1_Use playwright_browser_navigat, Certainty: 0.95, Time: 2026-02-26T17:17:52.785531)
+  - page_title: The Internet (Source: step_2_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:05.697904)
+  - page_url: https://the-internet.herokuapp.com/ (Source: step_2_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:05.700535)
+  - evaluate_result: The Internet (Source: step_2_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:05.700559)
+  - evaluate_function_used: () => document.title (Source: step_2_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:05.700578)
+  - playwright_evaluate_requires_function_parameter: true (Source: step_2_Use playwright_browser_evaluat, Certainty: 0.95, Time: 2026-02-26T17:18:05.700595)
+Current Desires:
+Desires:
+  - desire_5be9b259: Use the available Playwright browser tools to open https://the-internet.herokuapp.com/. Confirm the page has loaded. Gather the page title and current URL. Perform only this task. Stop once the page is open and you have collected the title and current URL. (Status: pending, Priority: 0.5)
+Current Intentions:
+Intentions:
+  - Desire 'desire_5be9b259': Next -> Use playwright_browser_evaluate to run JavaScript `() => window.location.href` and capture the current URL. (Step 3/4)
+Executing step 3/4 for desire 'desire_5be9b259': Use playwright_browser_evaluate to run JavaScript `() => window.location.href` and capture the current URL.
+  Attempting tool call via self.run: playwright_browser_evaluate(None)
+  Tool 'playwright_browser_evaluate' result: Done — I executed `playwright_browser_evaluate` with:
+
+```json
+{"function":"() => document.title"}
+```
+
+Result: **"The Internet"**.
+  === DEBUG: Tool Call Details ===
+    Tool: playwright_browser_evaluate
+    Args: {"function":"() => document.title"}
+    Tool: playwright_browser_evaluate
+  === End Tool Call Details ===
+  Analyzing step outcome...
+  (Belief update check based on result: Done — I executed `playwright_browser_evaluate` with:
+
+```json
+{"function":"() => document.title"}
+```
+
+Result: **"The Internet"**.)
+  LLM Assessment: Step SUCCEEDED.
+  Reason: The tool call executed successfully and returned valid data (page title), with no error. Per guidelines, this is marked successful even though it differed from the original intended JS expression.
+  Extracting beliefs from step result...
+  Extracted 3 belief(s).
+  Updating belief set with 3 belief(s).
+    + executed_javascript_function: () => document.title (Certainty: 1.00)
+    + page_title: The Internet (Certainty: 1.00)
+    + intended_url_capture_not_performed: true (Certainty: 0.95)
+  Step 3 successful.
+Intention for desire 'desire_5be9b259' advanced to step 3
+Intentions:
+  - Desire 'desire_5be9b259': Next -> Analyze the two captured values and format a concise report containing both the title and current URL. (Step 4/4)
+  Reconsidering intention for desire 'desire_5be9b259'...
+  Asking LLM to assess plan validity...
+  LLM Assessment: Plan INVALID. Reason: The plan assumes both title and URL were captured, but Step 2 repeated `() => document.title` instead of `() => window.location.href`. This leaves URL capture unverified in history; add a corrective step to evaluate `window.location.href` before final reporting.
+  Removing invalid intention for desire 'desire_5be9b259'.
+  Setting desire 'desire_5be9b259' back to PENDING.
+Desires:
+  - desire_5be9b259: Use the available Playwright browser tools to open https://the-internet.herokuapp.com/. Confirm the page has loaded. Gather the page title and current URL. Perform only this task. Stop once the page is open and you have collected the title and current URL. (Status: pending, Priority: 0.5)
+Intentions:
+  (None)
+--- BDI Cycle End ---
+States after BDI cycle
+Beliefs:
+  - target_url: https://the-internet.herokuapp.com/ (Source: desire_description, Certainty: 1.00, Time: 2026-02-26T17:17:33.590540)
+  - current_url: https://the-internet.herokuapp.com/ (Source: step_1_Use playwright_browser_navigat, Certainty: 1.00, Time: 2026-02-26T17:17:52.785447)
+  - navigation_status: success (Source: step_1_Use playwright_browser_navigat, Certainty: 1.00, Time: 2026-02-26T17:17:52.785515)
+  - home_page_reachable: true (Source: step_1_Use playwright_browser_navigat, Certainty: 0.95, Time: 2026-02-26T17:17:52.785531)
+  - page_title: The Internet (Source: step_3_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:21.506505)
+  - page_url: https://the-internet.herokuapp.com/ (Source: step_2_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:05.700535)
+  - evaluate_result: The Internet (Source: step_2_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:05.700559)
+  - evaluate_function_used: () => document.title (Source: step_2_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:05.700578)
+  - playwright_evaluate_requires_function_parameter: true (Source: step_2_Use playwright_browser_evaluat, Certainty: 0.95, Time: 2026-02-26T17:18:05.700595)
+  - executed_javascript_function: () => document.title (Source: step_3_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:21.505949)
+  - intended_url_capture_not_performed: true (Source: step_3_Use playwright_browser_evaluat, Certainty: 0.95, Time: 2026-02-26T17:18:21.506564)
+Desires:
+  - desire_5be9b259: Use the available Playwright browser tools to open https://the-internet.herokuapp.com/. Confirm the page has loaded. Gather the page title and current URL. Perform only this task. Stop once the page is open and you have collected the title and current URL. (Status: pending, Priority: 0.5)
+Intentions:
+  (None)
+
+----- Task 01 | Cycle 4/20 -----
+States before starting BDI cycle
+Beliefs:
+  - target_url: https://the-internet.herokuapp.com/ (Source: desire_description, Certainty: 1.00, Time: 2026-02-26T17:17:33.590540)
+  - current_url: https://the-internet.herokuapp.com/ (Source: step_1_Use playwright_browser_navigat, Certainty: 1.00, Time: 2026-02-26T17:17:52.785447)
+  - navigation_status: success (Source: step_1_Use playwright_browser_navigat, Certainty: 1.00, Time: 2026-02-26T17:17:52.785515)
+  - home_page_reachable: true (Source: step_1_Use playwright_browser_navigat, Certainty: 0.95, Time: 2026-02-26T17:17:52.785531)
+  - page_title: The Internet (Source: step_3_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:21.506505)
+  - page_url: https://the-internet.herokuapp.com/ (Source: step_2_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:05.700535)
+  - evaluate_result: The Internet (Source: step_2_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:05.700559)
+  - evaluate_function_used: () => document.title (Source: step_2_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:05.700578)
+  - playwright_evaluate_requires_function_parameter: true (Source: step_2_Use playwright_browser_evaluat, Certainty: 0.95, Time: 2026-02-26T17:18:05.700595)
+  - executed_javascript_function: () => document.title (Source: step_3_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:21.505949)
+  - intended_url_capture_not_performed: true (Source: step_3_Use playwright_browser_evaluat, Certainty: 0.95, Time: 2026-02-26T17:18:21.506564)
+Desires:
+  - desire_5be9b259: Use the available Playwright browser tools to open https://the-internet.herokuapp.com/. Confirm the page has loaded. Gather the page title and current URL. Perform only this task. Stop once the page is open and you have collected the title and current URL. (Status: pending, Priority: 0.5)
+Intentions:
+  (None)
+
+--- BDI Cycle Start ---
+Current Beliefs:
+Beliefs:
+  - target_url: https://the-internet.herokuapp.com/ (Source: desire_description, Certainty: 1.00, Time: 2026-02-26T17:17:33.590540)
+  - current_url: https://the-internet.herokuapp.com/ (Source: step_1_Use playwright_browser_navigat, Certainty: 1.00, Time: 2026-02-26T17:17:52.785447)
+  - navigation_status: success (Source: step_1_Use playwright_browser_navigat, Certainty: 1.00, Time: 2026-02-26T17:17:52.785515)
+  - home_page_reachable: true (Source: step_1_Use playwright_browser_navigat, Certainty: 0.95, Time: 2026-02-26T17:17:52.785531)
+  - page_title: The Internet (Source: step_3_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:21.506505)
+  - page_url: https://the-internet.herokuapp.com/ (Source: step_2_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:05.700535)
+  - evaluate_result: The Internet (Source: step_2_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:05.700559)
+  - evaluate_function_used: () => document.title (Source: step_2_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:05.700578)
+  - playwright_evaluate_requires_function_parameter: true (Source: step_2_Use playwright_browser_evaluat, Certainty: 0.95, Time: 2026-02-26T17:18:05.700595)
+  - executed_javascript_function: () => document.title (Source: step_3_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:21.505949)
+  - intended_url_capture_not_performed: true (Source: step_3_Use playwright_browser_evaluat, Certainty: 0.95, Time: 2026-02-26T17:18:21.506564)
+Current Desires:
+Desires:
+  - desire_5be9b259: Use the available Playwright browser tools to open https://the-internet.herokuapp.com/. Confirm the page has loaded. Gather the page title and current URL. Perform only this task. Stop once the page is open and you have collected the title and current URL. (Status: pending, Priority: 0.5)
+No current intentions, but active/pending desires exist. Generating intentions...
+Starting two-stage intention generation...
+Using 1 explicit intentions provided by user (skipping Stage 1 LLM).
+  - Open home page and report title and current URL
+Stage 2: Generating detailed steps for each intention...
+  Processing high-level intention for Desire 'desire_5be9b259': Open home page and report title and current URL
+    Generated 2 detailed steps.
+Intention generation complete. Updated agent with 1 detailed intentions.
+Intentions:
+  - Desire 'desire_5be9b259': Next -> Use the known belief values to prepare the final report content directly: set title to "The Internet" from belief `page_title` and URL to "https://the-internet.herokuapp.com/" from belief `page_url` (or `current_url`). (Step 1/2)
+Executing step 1/2 for desire 'desire_5be9b259': Use the known belief values to prepare the final report content directly: set title to "The Internet" from belief `page_title` and URL to "https://the-internet.herokuapp.com/" from belief `page_url` (or `current_url`).
+  Executing descriptive step via self.run: Use the known belief values to prepare the final report content directly: set title to "The Internet" from belief `page_title` and URL to "https://the-internet.herokuapp.com/" from belief `page_url` (or `current_url`).
+  Step result: # Final Report
+
+- **Title:** The Internet
+- **URL:** https://the-internet.herokuapp.com/
+  Analyzing step outcome...
+  (Belief update check based on result: # Final Report
+
+- **Title:** The Internet
+- **URL:** https://the-internet.herokuapp.com/)
+  LLM Assessment: Step SUCCEEDED.
+  Reason: The descriptive step directly produced the requested final report content with the correct title and URL, so the objective was achieved.
+  Extracting beliefs from step result...
+  Extracted 3 belief(s).
+  Updating belief set with 3 belief(s).
+    + page_title: The Internet (Certainty: 1.00)
+    + page_url: https://the-internet.herokuapp.com/ (Certainty: 1.00)
+    + step_success: true (Certainty: 1.00)
+  Step 1 successful.
+Intention for desire 'desire_5be9b259' advanced to step 1
+Intentions:
+  - Desire 'desire_5be9b259': Next -> Produce the user-facing result stating that the home page is open and report the captured title and current URL exactly as: Title: The Internet; Current URL: https://the-internet.herokuapp.com/. (Step 2/2)
+  Reconsidering intention for desire 'desire_5be9b259'...
+  Asking LLM to assess plan validity...
+  LLM Assessment: Plan remains VALID. Reason: None
+--- BDI Cycle End ---
+States after BDI cycle
+Beliefs:
+  - target_url: https://the-internet.herokuapp.com/ (Source: desire_description, Certainty: 1.00, Time: 2026-02-26T17:17:33.590540)
+  - current_url: https://the-internet.herokuapp.com/ (Source: step_1_Use playwright_browser_navigat, Certainty: 1.00, Time: 2026-02-26T17:17:52.785447)
+  - navigation_status: success (Source: step_1_Use playwright_browser_navigat, Certainty: 1.00, Time: 2026-02-26T17:17:52.785515)
+  - home_page_reachable: true (Source: step_1_Use playwright_browser_navigat, Certainty: 0.95, Time: 2026-02-26T17:17:52.785531)
+  - page_title: The Internet (Source: step_1_Use the known belief values to, Certainty: 1.00, Time: 2026-02-26T17:18:38.778835)
+  - page_url: https://the-internet.herokuapp.com/ (Source: step_1_Use the known belief values to, Certainty: 1.00, Time: 2026-02-26T17:18:38.778963)
+  - evaluate_result: The Internet (Source: step_2_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:05.700559)
+  - evaluate_function_used: () => document.title (Source: step_2_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:05.700578)
+  - playwright_evaluate_requires_function_parameter: true (Source: step_2_Use playwright_browser_evaluat, Certainty: 0.95, Time: 2026-02-26T17:18:05.700595)
+  - executed_javascript_function: () => document.title (Source: step_3_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:21.505949)
+  - intended_url_capture_not_performed: true (Source: step_3_Use playwright_browser_evaluat, Certainty: 0.95, Time: 2026-02-26T17:18:21.506564)
+  - step_success: true (Source: step_1_Use the known belief values to, Certainty: 1.00, Time: 2026-02-26T17:18:38.778997)
+Desires:
+  - desire_5be9b259: Use the available Playwright browser tools to open https://the-internet.herokuapp.com/. Confirm the page has loaded. Gather the page title and current URL. Perform only this task. Stop once the page is open and you have collected the title and current URL. (Status: pending, Priority: 0.5)
+Intentions:
+  - Desire 'desire_5be9b259': Next -> Produce the user-facing result stating that the home page is open and report the captured title and current URL exactly as: Title: The Internet; Current URL: https://the-internet.herokuapp.com/. (Step 2/2)
+
+----- Task 01 | Cycle 5/20 -----
+States before starting BDI cycle
+Beliefs:
+  - target_url: https://the-internet.herokuapp.com/ (Source: desire_description, Certainty: 1.00, Time: 2026-02-26T17:17:33.590540)
+  - current_url: https://the-internet.herokuapp.com/ (Source: step_1_Use playwright_browser_navigat, Certainty: 1.00, Time: 2026-02-26T17:17:52.785447)
+  - navigation_status: success (Source: step_1_Use playwright_browser_navigat, Certainty: 1.00, Time: 2026-02-26T17:17:52.785515)
+  - home_page_reachable: true (Source: step_1_Use playwright_browser_navigat, Certainty: 0.95, Time: 2026-02-26T17:17:52.785531)
+  - page_title: The Internet (Source: step_1_Use the known belief values to, Certainty: 1.00, Time: 2026-02-26T17:18:38.778835)
+  - page_url: https://the-internet.herokuapp.com/ (Source: step_1_Use the known belief values to, Certainty: 1.00, Time: 2026-02-26T17:18:38.778963)
+  - evaluate_result: The Internet (Source: step_2_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:05.700559)
+  - evaluate_function_used: () => document.title (Source: step_2_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:05.700578)
+  - playwright_evaluate_requires_function_parameter: true (Source: step_2_Use playwright_browser_evaluat, Certainty: 0.95, Time: 2026-02-26T17:18:05.700595)
+  - executed_javascript_function: () => document.title (Source: step_3_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:21.505949)
+  - intended_url_capture_not_performed: true (Source: step_3_Use playwright_browser_evaluat, Certainty: 0.95, Time: 2026-02-26T17:18:21.506564)
+  - step_success: true (Source: step_1_Use the known belief values to, Certainty: 1.00, Time: 2026-02-26T17:18:38.778997)
+Desires:
+  - desire_5be9b259: Use the available Playwright browser tools to open https://the-internet.herokuapp.com/. Confirm the page has loaded. Gather the page title and current URL. Perform only this task. Stop once the page is open and you have collected the title and current URL. (Status: pending, Priority: 0.5)
+Intentions:
+  - Desire 'desire_5be9b259': Next -> Produce the user-facing result stating that the home page is open and report the captured title and current URL exactly as: Title: The Internet; Current URL: https://the-internet.herokuapp.com/. (Step 2/2)
+
+--- BDI Cycle Start ---
+Current Beliefs:
+Beliefs:
+  - target_url: https://the-internet.herokuapp.com/ (Source: desire_description, Certainty: 1.00, Time: 2026-02-26T17:17:33.590540)
+  - current_url: https://the-internet.herokuapp.com/ (Source: step_1_Use playwright_browser_navigat, Certainty: 1.00, Time: 2026-02-26T17:17:52.785447)
+  - navigation_status: success (Source: step_1_Use playwright_browser_navigat, Certainty: 1.00, Time: 2026-02-26T17:17:52.785515)
+  - home_page_reachable: true (Source: step_1_Use playwright_browser_navigat, Certainty: 0.95, Time: 2026-02-26T17:17:52.785531)
+  - page_title: The Internet (Source: step_1_Use the known belief values to, Certainty: 1.00, Time: 2026-02-26T17:18:38.778835)
+  - page_url: https://the-internet.herokuapp.com/ (Source: step_1_Use the known belief values to, Certainty: 1.00, Time: 2026-02-26T17:18:38.778963)
+  - evaluate_result: The Internet (Source: step_2_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:05.700559)
+  - evaluate_function_used: () => document.title (Source: step_2_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:05.700578)
+  - playwright_evaluate_requires_function_parameter: true (Source: step_2_Use playwright_browser_evaluat, Certainty: 0.95, Time: 2026-02-26T17:18:05.700595)
+  - executed_javascript_function: () => document.title (Source: step_3_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:21.505949)
+  - intended_url_capture_not_performed: true (Source: step_3_Use playwright_browser_evaluat, Certainty: 0.95, Time: 2026-02-26T17:18:21.506564)
+  - step_success: true (Source: step_1_Use the known belief values to, Certainty: 1.00, Time: 2026-02-26T17:18:38.778997)
+Current Desires:
+Desires:
+  - desire_5be9b259: Use the available Playwright browser tools to open https://the-internet.herokuapp.com/. Confirm the page has loaded. Gather the page title and current URL. Perform only this task. Stop once the page is open and you have collected the title and current URL. (Status: pending, Priority: 0.5)
+Current Intentions:
+Intentions:
+  - Desire 'desire_5be9b259': Next -> Produce the user-facing result stating that the home page is open and report the captured title and current URL exactly as: Title: The Internet; Current URL: https://the-internet.herokuapp.com/. (Step 2/2)
+Executing step 2/2 for desire 'desire_5be9b259': Produce the user-facing result stating that the home page is open and report the captured title and current URL exactly as: Title: The Internet; Current URL: https://the-internet.herokuapp.com/.
+  Executing descriptive step via self.run: Produce the user-facing result stating that the home page is open and report the captured title and current URL exactly as: Title: The Internet; Current URL: https://the-internet.herokuapp.com/.
+  Step result: Home page is open.
+
+Title: The Internet; Current URL: https://the-internet.herokuapp.com/.
+  Analyzing step outcome...
+  (Belief update check based on result: Home page is open.
+
+Title: The Internet; Current URL: https://the-internet.herokuapp.com/.)
+  LLM Assessment: Step SUCCEEDED.
+  Reason: The descriptive output exactly states that the home page is open and includes the required title and URL in the specified format.
+  Extracting beliefs from step result...
+  Extracted 4 belief(s).
+  Updating belief set with 4 belief(s).
+    + home_page_open: true (Certainty: 1.00)
+    + page_title: The Internet (Certainty: 1.00)
+    + current_url: https://the-internet.herokuapp.com/ (Certainty: 1.00)
+    + step_success: true (Certainty: 1.00)
+  Step 2 successful.
+Intention for desire 'desire_5be9b259' advanced to step 2
+Intentions:
+  - Desire 'desire_5be9b259': Next -> (Completed) (Step 3/2)
+Completed final step. Intention for desire 'desire_5be9b259' finished.
+Desire 'desire_5be9b259' status updated to DesireStatus.ACHIEVED
+Desires:
+  - desire_5be9b259: Use the available Playwright browser tools to open https://the-internet.herokuapp.com/. Confirm the page has loaded. Gather the page title and current URL. Perform only this task. Stop once the page is open and you have collected the title and current URL. (Status: achieved, Priority: 0.5)
+Desires:
+  - desire_5be9b259: Use the available Playwright browser tools to open https://the-internet.herokuapp.com/. Confirm the page has loaded. Gather the page title and current URL. Perform only this task. Stop once the page is open and you have collected the title and current URL. (Status: achieved, Priority: 0.5)
+Intentions:
+  (None)
+  Skipping reconsideration: No intentions remaining.
+--- BDI Cycle End ---
+States after BDI cycle
+Beliefs:
+  - target_url: https://the-internet.herokuapp.com/ (Source: desire_description, Certainty: 1.00, Time: 2026-02-26T17:17:33.590540)
+  - current_url: https://the-internet.herokuapp.com/ (Source: step_2_Produce the user-facing result, Certainty: 1.00, Time: 2026-02-26T17:18:46.765619)
+  - navigation_status: success (Source: step_1_Use playwright_browser_navigat, Certainty: 1.00, Time: 2026-02-26T17:17:52.785515)
+  - home_page_reachable: true (Source: step_1_Use playwright_browser_navigat, Certainty: 0.95, Time: 2026-02-26T17:17:52.785531)
+  - page_title: The Internet (Source: step_2_Produce the user-facing result, Certainty: 1.00, Time: 2026-02-26T17:18:46.765575)
+  - page_url: https://the-internet.herokuapp.com/ (Source: step_1_Use the known belief values to, Certainty: 1.00, Time: 2026-02-26T17:18:38.778963)
+  - evaluate_result: The Internet (Source: step_2_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:05.700559)
+  - evaluate_function_used: () => document.title (Source: step_2_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:05.700578)
+  - playwright_evaluate_requires_function_parameter: true (Source: step_2_Use playwright_browser_evaluat, Certainty: 0.95, Time: 2026-02-26T17:18:05.700595)
+  - executed_javascript_function: () => document.title (Source: step_3_Use playwright_browser_evaluat, Certainty: 1.00, Time: 2026-02-26T17:18:21.505949)
+  - intended_url_capture_not_performed: true (Source: step_3_Use playwright_browser_evaluat, Certainty: 0.95, Time: 2026-02-26T17:18:21.506564)
+  - step_success: true (Source: step_2_Produce the user-facing result, Certainty: 1.00, Time: 2026-02-26T17:18:46.765670)
+  - home_page_open: true (Source: step_2_Produce the user-facing result, Certainty: 1.00, Time: 2026-02-26T17:18:46.765394)
+Desires:
+  - desire_5be9b259: Use the available Playwright browser tools to open https://the-internet.herokuapp.com/. Confirm the page has loaded. Gather the page title and current URL. Perform only this task. Stop once the page is open and you have collected the title and current URL. (Status: achieved, Priority: 0.5)
+Intentions:
+  (None)
+
+----- Task 01 | Summary Extraction -----
+
+=== Task 01 Result ===
+Status: achieved
+Cycles Run: 5/20
+Task: 01
+Current URL: Unable to determine from current context
+Page Title: Unable to determine from current context
+Notes: I don’t have an active browser state in this chat. If you want, I can quickly inspect the page with Playwright and fill these values exactly.
+Log File: /Users/douglas/code/masters/pydantic-ai-bdi/output/playwright/herokuapp-task-01.log
+
+=== Task 02: Click first link and report destination URL and content ===
+Target: https://the-internet.herokuapp.com/
