@@ -29,8 +29,6 @@ dev = [
 ]
 
 [project.scripts]
-start = "cli:start"
-cli = "cli:start"
 benchmark-run = "benchmarks.evaluation.runner:main"
 experiment-run = "benchmarks.experiments.run_experiments:main"
 
