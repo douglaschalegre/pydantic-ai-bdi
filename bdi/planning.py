@@ -32,9 +32,7 @@ async def generate_intentions_from_desires(agent: "BDI") -> None:
         agent: The BDI agent instance
     """
     if not agent.desires:
-        print(
-            f"{bcolors.SYSTEM}No desires to generate intentions from.{bcolors.ENDC}"
-        )
+        print(f"{bcolors.SYSTEM}No desires to generate intentions from.{bcolors.ENDC}")
         return
     if agent.intentions:
         print(
@@ -77,7 +75,9 @@ async def generate_intentions_from_desires(agent: "BDI") -> None:
             for d in agent.desires
             if d.status in [DesireStatus.PENDING, DesireStatus.ACTIVE]
         ]
-        primary_desire_id = active_desires[0].id if active_desires else agent.desires[0].id
+        primary_desire_id = (
+            active_desires[0].id if active_desires else agent.desires[0].id
+        )
 
         print(
             f"{bcolors.SYSTEM}Using {len(agent.initial_intention_guidance)} explicit intentions provided by user (skipping Stage 1 LLM).{bcolors.ENDC}"
@@ -91,9 +91,7 @@ async def generate_intentions_from_desires(agent: "BDI") -> None:
                 )
             )
             if agent.verbose:
-                print(
-                    f"{bcolors.INTENTION}  - {intention_desc}{bcolors.ENDC}"
-                )
+                print(f"{bcolors.INTENTION}  - {intention_desc}{bcolors.ENDC}")
     else:
         # No explicit intentions - generate via LLM (original Stage 1 behavior)
         if agent.verbose:
@@ -148,9 +146,7 @@ async def generate_intentions_from_desires(agent: "BDI") -> None:
             beliefs_text,
         )
         try:
-            stage2_result = await agent.run(
-                prompt_stage2, output_type=DetailedStepList
-            )
+            stage2_result = await agent.run(prompt_stage2, output_type=DetailedStepList)
             if (
                 not stage2_result
                 or not stage2_result.output
