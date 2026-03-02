@@ -11,6 +11,7 @@ import traceback
 import json
 
 from helper.util import bcolors
+from bdi.belief_updates import update_beliefs_from_hitl_guidance
 from bdi.schemas import (
     IntentionStep,
     PlanManipulationDirective,
@@ -330,36 +331,9 @@ async def apply_user_guided_action(
         print(
             f"{bcolors.BELIEF}  Extracting beliefs from HITL guidance...{bcolors.ENDC}"
         )
-        for name, belief_data_dict in directive.beliefs_to_update.items():
-            belief_data_dict.setdefault("name", name)
-            belief_data_dict.setdefault("source", "human_guidance")
-            belief_data_dict.setdefault("certainty", 1.0)
-            belief_data_dict.setdefault("timestamp", datetime.now().timestamp())
-            try:
-                agent.beliefs.update(
-                    name=name,
-                    value=belief_data_dict["value"],
-                    source=belief_data_dict["source"],
-                    certainty=belief_data_dict["certainty"],
-                )
-                if agent.verbose:
-                    print(
-                        f"{bcolors.BELIEF}    + {name}: {belief_data_dict['value']} (Source: human_guidance){bcolors.ENDC}"
-                    )
-                beliefs_updated = True
-            except KeyError as e:
-                print(
-                    f"{bcolors.FAIL}  Failed to update belief '{name}' due to missing data: {e}{bcolors.ENDC}"
-                )
-            except Exception as e:
-                print(
-                    f"{bcolors.FAIL}  Failed to update belief '{name}': {e}{bcolors.ENDC}"
-                )
-
-        if beliefs_updated:
-            log_states(
-                agent, ["beliefs"], message="Beliefs updated from HITL guidance."
-            )
+        beliefs_updated = update_beliefs_from_hitl_guidance(
+            agent, directive.beliefs_to_update
+        )
 
     # THEN: Apply plan manipulation
     try:

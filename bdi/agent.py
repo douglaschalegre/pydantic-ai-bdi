@@ -10,6 +10,7 @@ from collections import deque
 from pydantic_ai import Agent
 from helper.util import bcolors
 from bdi.schemas import BeliefSet, Desire, BeliefExtractionResult, generate_desire_id
+from bdi.belief_updates import update_beliefs_from_desire_extraction
 from bdi.errors import is_validation_output_error
 from bdi.logging import configure_terminal_output_mirror, log_states
 from bdi.prompts import build_initial_belief_extraction_prompt
@@ -98,17 +99,13 @@ class BDI(Agent, Generic[T]):
                 and extraction_result.output
                 and extraction_result.output.beliefs
             ):
-                for belief in extraction_result.output.beliefs:
-                    self.beliefs.update(
-                        name=belief.name,
-                        value=belief.value,
-                        source="desire_description",
-                        certainty=belief.certainty,
-                    )
+                updated_count = update_beliefs_from_desire_extraction(
+                    self, extraction_result.output.beliefs
+                )
 
                 if self.verbose:
                     print(
-                        f"{bcolors.BELIEF}Extracted {len(extraction_result.output.beliefs)} belief(s) from desires.{bcolors.ENDC}"
+                        f"{bcolors.BELIEF}Extracted {updated_count} belief(s) from desires.{bcolors.ENDC}"
                     )
                     log_states(self, ["beliefs"])
 

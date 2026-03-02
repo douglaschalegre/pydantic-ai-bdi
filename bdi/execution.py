@@ -13,6 +13,7 @@ import json
 from helper.util import bcolors
 from bdi.schemas import IntentionStep, BeliefExtractionResult, DesireStatus, StepAssessmentResult
 from bdi.errors import is_validation_output_error
+from bdi.belief_updates import update_beliefs_from_step_extraction
 from bdi.logging import log_states, format_beliefs_for_context
 from bdi.monitoring import generate_history_context
 from bdi.prompts import (
@@ -246,18 +247,11 @@ async def analyze_step_outcome_and_update_beliefs(
         print(
             f"{bcolors.BELIEF}  Updating belief set with {len(extracted_beliefs)} belief(s).{bcolors.ENDC}"
         )
-
-        for belief_dict in extracted_beliefs:
-            agent.beliefs.update(
-                name=belief_dict["name"],
-                value=belief_dict["value"],
-                source=f"step_{intention.current_step + 1}_{step.description[:30]}",
-                certainty=belief_dict["certainty"],
-            )
-            if agent.verbose:
-                print(
-                    f"{bcolors.BELIEF}    + {belief_dict['name']}: {belief_dict['value']} (Certainty: {belief_dict['certainty']:.2f}){bcolors.ENDC}"
-                )
+        update_beliefs_from_step_extraction(
+            agent,
+            extracted_beliefs,
+            source=f"step_{intention.current_step + 1}_{step.description[:30]}",
+        )
     else:
         if agent.verbose:
             print(f"{bcolors.SYSTEM}  No beliefs extracted.{bcolors.ENDC}")
