@@ -58,7 +58,6 @@ def create_agent(
     container_name: str,
     model_name: str,
     use_codex_provider: bool,
-    include_playwright: bool,
     verbose: bool,
     log_file_path: str | None,
 ) -> BDI:
@@ -67,9 +66,7 @@ def create_agent(
         provider = CodexProvider()
         model = CodexModel(model_name, provider=provider)
 
-    mcp_servers: list[MCPServerStdio] = []
-    if include_playwright:
-        mcp_servers.append(_build_playwright_server())
+    mcp_servers: list[MCPServerStdio] = [_build_playwright_server()]
 
     desire = (
         f"Complete the task described in /instruction/task.md inside docker container '{container_name}'. "
@@ -145,11 +142,6 @@ def parse_args() -> argparse.Namespace:
         "--verbose", action="store_true", help="Enable verbose BDI logs"
     )
     parser.add_argument(
-        "--include-playwright",
-        action="store_true",
-        help="Attach Playwright MCP server for browser tasks",
-    )
-    parser.add_argument(
         "--log-file",
         default=str(Path(__file__).with_name("tac_bdi_agent.log")),
         help="Path for terminal-mirrored BDI logs",
@@ -174,7 +166,6 @@ async def _main() -> None:
         container_name=args.container,
         model_name=args.model,
         use_codex_provider=args.provider == "codex",
-        include_playwright=args.include_playwright,
         verbose=args.verbose,
         log_file_path=args.log_file,
     )
