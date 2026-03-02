@@ -90,6 +90,7 @@ async def extract_relevant_beliefs_from_result(
         step.description,
         result.output if result else "No result",
         step_success,
+        format_beliefs_for_context(agent),
     )
 
     extracted_beliefs = []
@@ -245,13 +246,17 @@ async def analyze_step_outcome_and_update_beliefs(
     if extracted_beliefs:
         intention = agent.intentions[0]
         print(
-            f"{bcolors.BELIEF}  Updating belief set with {len(extracted_beliefs)} belief(s).{bcolors.ENDC}"
+            f"{bcolors.BELIEF}  Processing {len(extracted_beliefs)} extracted belief(s).{bcolors.ENDC}"
         )
-        update_beliefs_from_step_extraction(
+        update_stats = await update_beliefs_from_step_extraction(
             agent,
             extracted_beliefs,
             source=f"step_{intention.current_step + 1}_{step.description[:30]}",
         )
+        if agent.verbose:
+            print(
+                f"{bcolors.BELIEF}  Belief changes: +{update_stats['created']} ~{update_stats['updated']} ={update_stats['unchanged']}{bcolors.ENDC}"
+            )
     else:
         if agent.verbose:
             print(f"{bcolors.SYSTEM}  No beliefs extracted.{bcolors.ENDC}")

@@ -10,6 +10,8 @@ from bdi.schemas.belief_schemas import (
     BeliefSet,
     ExtractedBelief,
     BeliefExtractionResult,
+    BeliefNameResolutionDecision,
+    BeliefUpdateDecision,
 )
 
 # Desire-related schemas
@@ -46,6 +48,8 @@ __all__ = [
     "BeliefSet",
     "ExtractedBelief",
     "BeliefExtractionResult",
+    "BeliefNameResolutionDecision",
+    "BeliefUpdateDecision",
     # Desire schemas
     "Desire",
     "DesireStatus",

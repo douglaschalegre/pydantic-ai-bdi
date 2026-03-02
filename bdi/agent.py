@@ -99,13 +99,13 @@ class BDI(Agent, Generic[T]):
                 and extraction_result.output
                 and extraction_result.output.beliefs
             ):
-                updated_count = update_beliefs_from_desire_extraction(
+                update_stats = await update_beliefs_from_desire_extraction(
                     self, extraction_result.output.beliefs
                 )
 
                 if self.verbose:
                     print(
-                        f"{bcolors.BELIEF}Extracted {updated_count} belief(s) from desires.{bcolors.ENDC}"
+                        f"{bcolors.BELIEF}Extracted beliefs from desires: +{update_stats['created']} ~{update_stats['updated']} ={update_stats['unchanged']}.{bcolors.ENDC}"
                     )
                     log_states(self, ["beliefs"])
 

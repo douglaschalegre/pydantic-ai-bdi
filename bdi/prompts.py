@@ -122,6 +122,7 @@ def build_step_belief_extraction_prompt(
     step_description: str,
     step_result: str,
     step_success: bool,
+    current_beliefs: str,
 ) -> str:
     return dedent(
         f"""
@@ -131,6 +132,9 @@ def build_step_belief_extraction_prompt(
         Step Result: "{step_result}"
         Step Success: {step_success}
 
+        Current Known Beliefs:
+        {current_beliefs}
+
         Extract beliefs about:
         - Factual information discovered (e.g., file paths, status values, API responses)
         - Error causes or constraints (e.g., "path does not exist", "network unavailable")
@@ -139,6 +143,12 @@ def build_step_belief_extraction_prompt(
 
         For FAILED steps, focus on extracting information about WHY it failed - these constraints are valuable.
         For SUCCESSFUL steps, extract the positive information discovered.
+
+        CRITICAL DEDUPLICATION RULES:
+        - Do NOT re-emit facts that are already present in Current Known Beliefs unless the value changed.
+        - Do NOT emit synonyms for existing belief names (reuse the same belief name when possible).
+        - If the step only repeats existing beliefs, return an empty beliefs list.
+        - Avoid operational/meta beliefs like step_success unless they represent genuinely new state.
 
         IMPORTANT: Each belief MUST have exactly these three fields:
         - "name": A concise identifier string (e.g., "repo_path", "commit_count", "error_type")
@@ -344,6 +354,68 @@ def build_hitl_interpretation_prompt(
     )
 
 
+def build_belief_update_resolution_prompt(
+    belief_name: str,
+    existing_value: Any,
+    existing_certainty: float,
+    incoming_value: Any,
+    incoming_certainty: float,
+    incoming_source: str,
+) -> str:
+    return dedent(
+        f"""
+        Decide whether an incoming belief should update an existing belief.
+
+        Belief name: {belief_name}
+        Existing belief value: {json.dumps(existing_value)}
+        Existing certainty: {existing_certainty}
+
+        Incoming belief value: {json.dumps(incoming_value)}
+        Incoming certainty: {incoming_certainty}
+        Incoming source: {incoming_source}
+
+        Rules:
+        1. If incoming value is semantically equivalent to existing value, do not update.
+        2. If incoming value adds meaningful correction/detail, update.
+        3. If values conflict, prefer the more reliable and specific value.
+        4. Certainty should be between 0.0 and 1.0.
+
+        Return structured output with:
+        - should_update: true/false
+        - normalized_value: value to store if updating (or existing value if not)
+        - certainty: certainty to store
+        - rationale: short justification
+        """
+    )
+
+
+def build_belief_name_resolution_prompt(
+    incoming_name: str,
+    incoming_value: Any,
+    existing_beliefs: dict[str, Any],
+) -> str:
+    return dedent(
+        f"""
+        Resolve whether an incoming belief should reuse an existing belief name.
+
+        Incoming belief name: {incoming_name}
+        Incoming belief value: {json.dumps(incoming_value)}
+
+        Existing beliefs (name -> value):
+        {json.dumps(existing_beliefs)}
+
+        Rules:
+        1. If an existing belief name already represents the same concept, return that exact existing name.
+        2. If no existing belief name matches semantically, keep the incoming name.
+        3. Prefer stable naming and avoid creating synonyms.
+
+        Return structured output with:
+        - resolved_name: final belief name to use
+        - rationale: short explanation
+        """
+    )
+
+
 __all__ = [
     "build_descriptive_execution_prompt",
     "build_hitl_interpretation_prompt",
@@ -351,6 +423,8 @@ __all__ = [
     "build_planning_stage1_prompt",
     "build_planning_stage2_prompt",
     "build_reconsideration_prompt",
+    "build_belief_update_resolution_prompt",
+    "build_belief_name_resolution_prompt",
     "build_step_assessment_prompt",
     "build_step_belief_extraction_prompt",
     "build_tool_execution_prompt",

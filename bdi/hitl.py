@@ -331,7 +331,7 @@ async def apply_user_guided_action(
         print(
             f"{bcolors.BELIEF}  Extracting beliefs from HITL guidance...{bcolors.ENDC}"
         )
-        beliefs_updated = update_beliefs_from_hitl_guidance(
+        beliefs_updated = await update_beliefs_from_hitl_guidance(
             agent, directive.beliefs_to_update
         )
 

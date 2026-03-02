@@ -4,9 +4,13 @@ This module contains data models for representing beliefs, managing belief sets,
 and extracting beliefs from step execution results.
 """
 
-from typing import Dict, List, Any, Optional
-from pydantic import BaseModel, Field
 from datetime import datetime
+from typing import Any, Dict, List, Literal, Optional
+
+from pydantic import BaseModel, Field
+
+
+BeliefMutation = Literal["created", "updated", "unchanged"]
 
 
 class Belief(BaseModel):
@@ -33,23 +37,52 @@ class BeliefSet:
         """Retrieve a belief by name."""
         return self.beliefs.get(name)
 
-    def update(self, name: str, value: Any, source: str, certainty: float = 1.0):
-        """Update an existing belief or add if new."""
-        if name in self.beliefs:
-            self.beliefs[name].value = value
-            self.beliefs[name].source = source
-            self.beliefs[name].timestamp = datetime.now().timestamp()
-            self.beliefs[name].certainty = certainty
-        else:
+    def upsert(
+        self, name: str, value: Any, source: str, certainty: float = 1.0
+    ) -> BeliefMutation:
+        """Insert or update a belief, returning mutation state.
+
+        Returns:
+            "created" when a new belief is added,
+            "updated" when an existing belief value changes or certainty increases,
+            "unchanged" when the value is the same and certainty does not improve.
+        """
+        existing = self.beliefs.get(name)
+        if not existing:
+            timestamp = datetime.now().timestamp()
             self.add(
                 Belief(
                     name=name,
                     value=value,
                     source=source,
-                    timestamp=datetime.now().timestamp(),
+                    timestamp=timestamp,
                     certainty=certainty,
                 )
             )
+            return "created"
+
+        if existing.value == value:
+            if certainty <= existing.certainty:
+                return "unchanged"
+
+            timestamp = datetime.now().timestamp()
+            existing.source = source
+            existing.timestamp = timestamp
+            existing.certainty = certainty
+            return "updated"
+
+        timestamp = datetime.now().timestamp()
+        existing.value = value
+        existing.source = source
+        existing.timestamp = timestamp
+        existing.certainty = certainty
+        return "updated"
+
+    def update(
+        self, name: str, value: Any, source: str, certainty: float = 1.0
+    ) -> BeliefMutation:
+        """Backwards-compatible alias for belief upsert."""
+        return self.upsert(name=name, value=value, source=source, certainty=certainty)
 
     def remove(self, name: str):
         """Remove a belief."""
@@ -86,9 +119,42 @@ class BeliefExtractionResult(BaseModel):
     )
 
 
+class BeliefUpdateDecision(BaseModel):
+    """LLM decision for resolving belief updates."""
+
+    should_update: bool = Field(
+        description="Whether the incoming belief should update the existing belief"
+    )
+    normalized_value: Any = Field(
+        description="Canonical value to store for this belief"
+    )
+    certainty: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Confidence score for the value that should be stored",
+    )
+    rationale: str = Field(
+        description="Brief explanation for the update decision"
+    )
+
+
+class BeliefNameResolutionDecision(BaseModel):
+    """LLM decision for belief name resolution."""
+
+    resolved_name: str = Field(
+        description="Final belief name to use (existing key or incoming key)",
+        min_length=1,
+    )
+    rationale: str = Field(
+        description="Brief explanation for why this belief name was selected"
+    )
+
+
 __all__ = [
     "Belief",
     "BeliefSet",
     "ExtractedBelief",
     "BeliefExtractionResult",
+    "BeliefNameResolutionDecision",
+    "BeliefUpdateDecision",
 ]
