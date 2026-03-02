@@ -4,9 +4,20 @@ This module contains data models for representing intentions (committed plans),
 intention steps, step history, and LLM output formats for intention generation.
 """
 
-from typing import Dict, List, Any, Optional, Callable
-from pydantic import BaseModel, Field
 from datetime import datetime
+from typing import Any, Callable, Dict, List, Literal, Optional
+
+from pydantic import BaseModel, Field
+
+
+PlanDecision = Literal["keep", "merge", "skip"]
+PlanReasonCategory = Literal[
+    "already_completed",
+    "already_planned",
+    "blocked",
+    "new_work_needed",
+    "other",
+]
 
 
 class IntentionStep(BaseModel):
@@ -102,6 +113,22 @@ class DetailedStepList(BaseModel):
     steps: List[IntentionStep]
 
 
+class PlanJudgementResult(BaseModel):
+    """Judgement output for deciding whether a new plan adds useful work."""
+
+    decision: PlanDecision = Field(
+        description="keep = keep all steps, merge = keep only non-redundant steps, skip = no further action needed"
+    )
+    reason_category: PlanReasonCategory = Field(
+        description="Structured reason category for observability."
+    )
+    reason: str = Field(description="Short explanation for the judgement decision.")
+    redundant_step_indices: List[int] = Field(
+        default_factory=list,
+        description="1-based step indexes from the proposed plan that are redundant and can be removed.",
+    )
+
+
 __all__ = [
     "IntentionStep",
     "StepHistory",
@@ -109,4 +136,5 @@ __all__ = [
     "HighLevelIntention",
     "HighLevelIntentionList",
     "DetailedStepList",
+    "PlanJudgementResult",
 ]

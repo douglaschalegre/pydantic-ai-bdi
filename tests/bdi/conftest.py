@@ -16,6 +16,7 @@ class StubBDIAgent:
         self.verbose = False
         self.tool_configs = {}
         self._queued_run_outputs = deque()
+        self.run_calls = []
 
     def add_desire(
         self,
@@ -54,6 +55,13 @@ class StubBDIAgent:
         self._queued_run_outputs.append(SimpleNamespace(output=output))
 
     async def run(self, *_args, **_kwargs):
+        prompt = _args[0] if _args else _kwargs.get("prompt", "")
+        self.run_calls.append(
+            {
+                "prompt": prompt,
+                "output_type": _kwargs.get("output_type"),
+            }
+        )
         if not self._queued_run_outputs:
             raise AssertionError("StubBDIAgent.run called without queued output")
         return self._queued_run_outputs.popleft()

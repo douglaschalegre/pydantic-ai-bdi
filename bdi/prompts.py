@@ -79,6 +79,7 @@ def build_planning_stage2_prompt(
     intention_description: str,
     desire_id: str,
     beliefs_text: str,
+    existing_plan_context: str,
 ) -> str:
     return dedent(
         f"""
@@ -95,11 +96,16 @@ def build_planning_stage2_prompt(
         Current Beliefs:
         {beliefs_text}
 
+        Already Planned Intentions and Steps:
+        {existing_plan_context}
+
         IMPORTANT: When planning steps, actively use current beliefs:
         - Skip discovery steps if beliefs already contain the needed information
         - Use belief values to set initial tool parameters (e.g., if belief contains a path, use it)
         - Account for constraints or limitations revealed in beliefs (e.g., if a belief indicates something failed, don't retry the same way)
         - Build upon information already known rather than re-discovering it
+        - Avoid duplicating or conflicting with steps already planned for previous intentions
+        - If prior plans already cover this intention, return an empty steps list
 
         Available Tools:
         (The underlying Pydantic AI agent will provide the available tools, including those from MCP, to the LLM.)
@@ -114,6 +120,48 @@ def build_planning_stage2_prompt(
         Structure the output as a list of steps according to the required format.
         Focus exclusively on HOW to achieve the intention '{intention_description}' using only the allowed action types.
         Provide parameters for tool calls based on the context and beliefs.
+        """
+    )
+
+
+def build_plan_coverage_judgement_prompt(
+    intention_description: str,
+    desire_id: str,
+    beliefs_text: str,
+    existing_plan_context: str,
+    proposed_steps_text: str,
+) -> str:
+    return dedent(
+        f"""
+        Evaluate whether this newly proposed intention plan adds necessary work.
+
+        Intention under review:
+        - Desire ID: {desire_id}
+        - Description: {intention_description}
+
+        Current Beliefs:
+        {beliefs_text}
+
+        Already Planned Intentions and Steps:
+        {existing_plan_context}
+
+        Newly Proposed Steps:
+        {proposed_steps_text}
+
+        Decision rules:
+        1. Return decision='skip' when the intention is already satisfied by beliefs or fully covered by prior planned steps.
+        2. Return decision='merge' when only part of the proposed plan is redundant.
+        3. Return decision='keep' when the plan introduces clearly novel required work.
+        4. Use reason_category for observability. Prefer:
+           - already_completed: beliefs indicate task done
+           - already_planned: prior intention steps already cover the work
+           - blocked: constraints prevent progress now
+           - new_work_needed: plan is required and additive
+           - other: none of the above
+        5. For decision='merge', provide redundant_step_indices as 1-based indexes of redundant steps from the newly proposed list.
+        6. For decision='keep' or 'skip', redundant_step_indices can be empty.
+
+        Be conservative: only choose 'skip' when evidence is strong.
         """
     )
 
@@ -422,6 +470,7 @@ __all__ = [
     "build_initial_belief_extraction_prompt",
     "build_planning_stage1_prompt",
     "build_planning_stage2_prompt",
+    "build_plan_coverage_judgement_prompt",
     "build_reconsideration_prompt",
     "build_belief_update_resolution_prompt",
     "build_belief_name_resolution_prompt",

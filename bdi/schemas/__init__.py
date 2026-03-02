@@ -29,6 +29,7 @@ from bdi.schemas.intention_schemas import (
     HighLevelIntention,
     HighLevelIntentionList,
     DetailedStepList,
+    PlanJudgementResult,
 )
 
 # Reconsideration schemas
@@ -61,6 +62,7 @@ __all__ = [
     "HighLevelIntention",
     "HighLevelIntentionList",
     "DetailedStepList",
+    "PlanJudgementResult",
     # Reconsider schemas
     "ReconsiderResult",
     "StepAssessmentResult",
