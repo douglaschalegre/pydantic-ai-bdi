@@ -125,17 +125,15 @@ class BeliefUpdateDecision(BaseModel):
     should_update: bool = Field(
         description="Whether the incoming belief should update the existing belief"
     )
-    normalized_value: Any = Field(
-        description="Canonical value to store for this belief"
+    normalized_value: str = Field(
+        description="Canonical string value to store for this belief"
     )
     certainty: float = Field(
         ge=0.0,
         le=1.0,
         description="Confidence score for the value that should be stored",
     )
-    rationale: str = Field(
-        description="Brief explanation for the update decision"
-    )
+    rationale: str = Field(description="Brief explanation for the update decision")
 
 
 class BeliefNameResolutionDecision(BaseModel):

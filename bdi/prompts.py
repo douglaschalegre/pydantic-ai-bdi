@@ -430,7 +430,7 @@ def build_belief_update_resolution_prompt(
 
         Return structured output with:
         - should_update: true/false
-        - normalized_value: value to store if updating (or existing value if not)
+        - normalized_value: string value to store if updating (or existing value if not)
         - certainty: certainty to store
         - rationale: short justification
         """
