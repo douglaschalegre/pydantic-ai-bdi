@@ -286,6 +286,8 @@ def build_tool_execution_prompt(
 
         You may adjust parameters if current beliefs suggest better values or if conditions have changed.
         {retry_warning}
+        You MUST call the specified tool for this step and base your response on the tool's returned output.
+        Do not claim inability/capability constraints unless the tool call explicitly fails with an error.
         Perform this action now.
         """
     )

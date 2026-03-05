@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 import traceback
 import json
+from types import SimpleNamespace
 
 from helper.util import bcolors
 from bdi.schemas import IntentionStep, BeliefExtractionResult, DesireStatus, StepAssessmentResult
@@ -322,6 +323,41 @@ def _log_tool_debug_messages(agent: "BDI", step_result: "AgentRunResult") -> Non
     print(f"{bcolors.SYSTEM}  === End Tool Call Details ==={bcolors.ENDC}")
 
 
+def _extract_latest_tool_result_content(step_result: "AgentRunResult") -> Optional[str]:
+    """Extract the latest raw tool result payload from agent messages.
+
+    For tool-execution steps we prefer the direct tool output over the model's
+    synthesized final narrative response.
+    """
+    if not hasattr(step_result, "all_messages"):
+        return None
+
+    all_messages = step_result.all_messages()
+    if not all_messages:
+        return None
+
+    latest_content: Optional[str] = None
+    for msg in all_messages:
+        parts = getattr(msg, "parts", None)
+        if not parts:
+            continue
+
+        for part in parts:
+            if not getattr(part, "tool_call_id", None):
+                continue
+
+            content = getattr(part, "content", None)
+            if content is None:
+                continue
+
+            if isinstance(content, (bytes, bytearray)):
+                latest_content = content.decode(errors="replace")
+            else:
+                latest_content = str(content)
+
+    return latest_content
+
+
 async def _run_step_attempt(
     agent: "BDI",
     current_step: IntentionStep,
@@ -345,11 +381,13 @@ async def _run_step_attempt(
             is_retry,
         )
         step_result = await agent.run(tool_prompt)
+        extracted_tool_output = _extract_latest_tool_result_content(step_result)
+        effective_output = extracted_tool_output or step_result.output
         print(
-            f"{bcolors.SYSTEM}  Tool '{current_step.tool_name}' result: {step_result.output}{bcolors.ENDC}"
+            f"{bcolors.SYSTEM}  Tool '{current_step.tool_name}' result: {effective_output}{bcolors.ENDC}"
         )
         _log_tool_debug_messages(agent, step_result)
-        return step_result
+        return SimpleNamespace(output=effective_output)
 
     if agent.verbose:
         print(
