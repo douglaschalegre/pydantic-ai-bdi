@@ -1,4 +1,6 @@
 import pytest
+from types import SimpleNamespace
+from typing import Any, cast
 
 import bdi.execution as execution
 from bdi.schemas import DesireStatus
@@ -90,3 +92,19 @@ async def test_execute_intentions_success_completes_single_step(
     assert len(intention.step_history) == 1
     assert intention.step_history[0].success is True
     assert intention.step_history[0].result == "done"
+
+
+def test_extract_latest_tool_result_content_prefers_tool_payload() -> None:
+    step_result = SimpleNamespace(
+        all_messages=lambda: [
+            SimpleNamespace(
+                parts=[
+                    SimpleNamespace(tool_name="run_in_tac", args={"command": "cat /instruction/task.md"}),
+                    SimpleNamespace(tool_call_id="call_1", content="raw instruction content"),
+                ]
+            )
+        ]
+    )
+
+    extracted = execution._extract_latest_tool_result_content(cast(Any, step_result))
+    assert extracted == "raw instruction content"
