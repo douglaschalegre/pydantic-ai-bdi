@@ -4,15 +4,35 @@ This module contains the main BDI agent class that orchestrates all BDI componen
 beliefs, desires, intentions, planning, execution, monitoring, and human-in-the-loop.
 """
 
-from typing import List, Optional, TypeVar, Generic
 from collections import deque
+from collections.abc import Sequence
+import json
+from typing import Any, Generic, List, Optional, TypeVar, overload
 
-from pydantic_ai import Agent
+from pydantic_ai import Agent, models, usage as _usage
+from pydantic_ai.agent import (
+    AgentMetadata,
+    EventStreamHandler,
+    Instructions,
+    RunOutputDataT,
+)
+from pydantic_ai.builtin_tools import AbstractBuiltinTool
+from pydantic_ai.messages import ModelMessage, UserContent
+from pydantic_ai.output import OutputSpec
+from pydantic_ai.run import AgentRunResult
+from pydantic_ai.settings import ModelSettings
+from pydantic_ai.tools import BuiltinToolFunc, DeferredToolResults
+from pydantic_ai.toolsets import AbstractToolset
+
 from helper.util import bcolors
 from bdi.schemas import BeliefSet, Desire, BeliefExtractionResult, generate_desire_id
 from bdi.belief_updates import update_beliefs_from_desire_extraction
 from bdi.errors import is_validation_output_error
-from bdi.logging import configure_terminal_output_mirror, log_states
+from bdi.logging import (
+    build_structured_run_log_entry,
+    configure_terminal_output_mirror,
+    log_states,
+)
 from bdi.prompts import build_initial_belief_extraction_prompt
 from bdi.planning import generate_intentions_from_desires
 from bdi.execution import execute_intentions
@@ -37,6 +57,7 @@ class BDI(Agent, Generic[T]):
         verbose: bool = False,
         enable_human_in_the_loop: bool = False,
         log_file_path: Optional[str] = None,
+        structured_log_file_path: Optional[str] = None,
         output_retries: int = 3,  # Higher default for structured output retries
         **kwargs,
     ):
@@ -49,10 +70,15 @@ class BDI(Agent, Generic[T]):
         self.verbose = verbose
         self.enable_human_in_the_loop = enable_human_in_the_loop
         self.log_file_path = log_file_path
+        self.structured_log_file_path = structured_log_file_path
+        self._structured_log_entries: list[dict[str, Any]] = []
         self.cycle_count = 0
 
         if self.log_file_path:
             self._initialize_log_file()
+
+        if self.structured_log_file_path:
+            self._initialize_structured_log_file()
 
         self._initialize_string_desires(desires)
 
@@ -144,6 +170,142 @@ class BDI(Agent, Generic[T]):
                 f"{bcolors.FAIL}Failed to initialize log file at {self.log_file_path}: {e}{bcolors.ENDC}"
             )
             self.log_file_path = None
+
+    def _initialize_structured_log_file(self) -> None:
+        """Initialize the structured JSON run log file."""
+        if not self.structured_log_file_path:
+            return
+
+        try:
+            self._structured_log_entries = []
+            with open(self.structured_log_file_path, "w", encoding="utf-8") as f:
+                json.dump(self._structured_log_entries, f, ensure_ascii=False, indent=2)
+
+            if self.verbose:
+                print(
+                    f"{bcolors.SYSTEM}Structured log file initialized at: {self.structured_log_file_path}{bcolors.ENDC}"
+                )
+        except Exception as e:
+            print(
+                f"{bcolors.FAIL}Failed to initialize structured log file at {self.structured_log_file_path}: {e}{bcolors.ENDC}"
+            )
+            self.structured_log_file_path = None
+
+    def _persist_structured_log_entries(self) -> None:
+        """Rewrite the structured run log JSON file."""
+        if not self.structured_log_file_path:
+            return
+
+        try:
+            with open(self.structured_log_file_path, "w", encoding="utf-8") as f:
+                json.dump(self._structured_log_entries, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(
+                f"{bcolors.WARNING}Failed to persist structured log at {self.structured_log_file_path}: {e}{bcolors.ENDC}"
+            )
+            self.structured_log_file_path = None
+
+    def _record_structured_run(
+        self,
+        user_prompt: str | Sequence[UserContent] | None,
+        result: AgentRunResult[Any],
+    ) -> None:
+        """Capture a single `run(...)` invocation into the structured log."""
+        entry = build_structured_run_log_entry(user_prompt, result)
+        self._structured_log_entries.append(entry)
+        self._persist_structured_log_entries()
+
+    @overload
+    async def run(
+        self,
+        user_prompt: str | Sequence[UserContent] | None = None,
+        *,
+        output_type: None = None,
+        message_history: Sequence[ModelMessage] | None = None,
+        deferred_tool_results: DeferredToolResults | None = None,
+        model: models.Model | models.KnownModelName | str | None = None,
+        instructions: Instructions[Any] = None,
+        deps: Any = None,
+        model_settings: ModelSettings | None = None,
+        usage_limits: _usage.UsageLimits | None = None,
+        usage: _usage.RunUsage | None = None,
+        metadata: AgentMetadata[Any] | None = None,
+        infer_name: bool = True,
+        toolsets: Sequence[AbstractToolset[Any]] | None = None,
+        builtin_tools: Sequence[AbstractBuiltinTool | BuiltinToolFunc[Any]]
+        | None = None,
+        event_stream_handler: EventStreamHandler[Any] | None = None,
+    ) -> AgentRunResult[T]: ...
+
+    @overload
+    async def run(
+        self,
+        user_prompt: str | Sequence[UserContent] | None = None,
+        *,
+        output_type: OutputSpec[RunOutputDataT],
+        message_history: Sequence[ModelMessage] | None = None,
+        deferred_tool_results: DeferredToolResults | None = None,
+        model: models.Model | models.KnownModelName | str | None = None,
+        instructions: Instructions[Any] = None,
+        deps: Any = None,
+        model_settings: ModelSettings | None = None,
+        usage_limits: _usage.UsageLimits | None = None,
+        usage: _usage.RunUsage | None = None,
+        metadata: AgentMetadata[Any] | None = None,
+        infer_name: bool = True,
+        toolsets: Sequence[AbstractToolset[Any]] | None = None,
+        builtin_tools: Sequence[AbstractBuiltinTool | BuiltinToolFunc[Any]]
+        | None = None,
+        event_stream_handler: EventStreamHandler[Any] | None = None,
+    ) -> AgentRunResult[RunOutputDataT]: ...
+
+    async def run(
+        self,
+        user_prompt: str | Sequence[UserContent] | None = None,
+        *,
+        output_type: OutputSpec[RunOutputDataT] | None = None,
+        message_history: Sequence[ModelMessage] | None = None,
+        deferred_tool_results: DeferredToolResults | None = None,
+        model: models.Model | models.KnownModelName | str | None = None,
+        instructions: Instructions[Any] = None,
+        deps: Any = None,
+        model_settings: ModelSettings | None = None,
+        usage_limits: _usage.UsageLimits | None = None,
+        usage: _usage.RunUsage | None = None,
+        metadata: AgentMetadata[Any] | None = None,
+        infer_name: bool = True,
+        toolsets: Sequence[AbstractToolset[Any]] | None = None,
+        builtin_tools: Sequence[AbstractBuiltinTool | BuiltinToolFunc[Any]]
+        | None = None,
+        event_stream_handler: EventStreamHandler[Any] | None = None,
+    ) -> AgentRunResult[Any]:
+        """Run the underlying Pydantic AI agent and capture a structured log entry."""
+        result = await super().run(
+            user_prompt=user_prompt,
+            output_type=output_type,
+            message_history=message_history,
+            deferred_tool_results=deferred_tool_results,
+            model=model,
+            instructions=instructions,
+            deps=deps,
+            model_settings=model_settings,
+            usage_limits=usage_limits,
+            usage=usage,
+            metadata=metadata,
+            infer_name=infer_name,
+            toolsets=toolsets,
+            builtin_tools=builtin_tools,
+            event_stream_handler=event_stream_handler,
+        )
+
+        try:
+            self._record_structured_run(user_prompt, result)
+        except Exception as e:
+            print(
+                f"{bcolors.WARNING}Failed to capture structured run log entry: {e}{bcolors.ENDC}"
+            )
+
+        return result
 
     async def generate_intentions_from_desires(self) -> None:
         """Generate intentions from desires using two-stage LLM process."""
