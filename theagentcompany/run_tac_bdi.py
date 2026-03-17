@@ -372,7 +372,9 @@ def _stop_container_if_running(container_name: str) -> None:
     if not _docker_container_running(container_name):
         return
 
-    result = _run_command_result([DOCKER_BIN, "stop", container_name], timeout_seconds=90)
+    result = _run_command_result(
+        [DOCKER_BIN, "stop", container_name], timeout_seconds=90
+    )
     if not result.succeeded:
         raise RuntimeError(
             f"Could not stop container '{container_name}'.\n{result.render()}"
@@ -641,9 +643,9 @@ async def run_batch(args: argparse.Namespace) -> int:
                 model_name=args.model,
                 use_codex_provider=args.provider == "codex",
                 verbose=args.verbose,
-            log_file_path=None,
-            structured_log_file_path=str(
-                _structured_log_path_for_task(structured_log_dir, task)
+                log_file_path=None,
+                structured_log_file_path=str(
+                    _structured_log_path_for_task(structured_log_dir, task)
                 ),
                 max_cycles=args.max_cycles,
                 cycle_sleep_seconds=args.cycle_sleep,
@@ -778,7 +780,9 @@ def parse_args() -> argparse.Namespace:
         default="codex",
         help="Use Codex OAuth provider or pass model string directly to PydanticAI",
     )
-    parser.add_argument("--max-cycles", type=int, default=30, help="Maximum BDI cycles")
+    parser.add_argument(
+        "--max-cycles", type=int, default=100, help="Maximum BDI cycles"
+    )
     parser.add_argument(
         "--cycle-sleep", type=float, default=1.0, help="Seconds to sleep between cycles"
     )
