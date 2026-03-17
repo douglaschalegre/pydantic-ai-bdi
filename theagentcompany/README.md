@@ -1,56 +1,74 @@
 # TAC BDI Agent Runner
 
-This folder contains a BDI-based runner for TheAgentCompany tasks inside a Docker task container (default: `tac-test`).
+This folder contains a BDI-based runner for TheAgentCompany tasks.
 
 The runner creates a `BDI` agent with tools to:
 - Read `/instruction/task.md` from the task container
 - Run arbitrary shell commands in the container
 - Inspect `/workspace`, `/instruction`, and `/utils`
-- Optionally run `/utils/eval.py`
 
 ## Prerequisites
 
 1. TAC infra containers are running.
-2. Your task container exists and is running (e.g. `tac-test`).
-3. You already initialized the task at least once:
-
-```bash
-docker exec tac-test /bin/bash -lc 'SERVER_HOSTNAME=127.0.0.1 bash /utils/init.sh'
-```
-
-4. Python dependencies are installed in repo root:
+2. Python dependencies are installed in repo root:
 
 ```bash
 cd /Users/douglas/code/masters/pydantic-ai-bdi
 uv sync
 ```
 
-## Run
+## Modes
 
-From repo root:
+### Manual container mode
+
+Use this when you already started and initialized the TAC container yourself:
 
 ```bash
-uv run python the-agent-company/run_tac_bdi.py --container tac-test --verbose
+uv run python theagentcompany/run_tac_bdi.py \
+  --container tac-test \
+  --verbose
 ```
 
-Useful flags:
+### Managed single-task mode
+
+Use this when the runner should create the task container, run `/utils/init.sh`, wait for `All services are ready!`, then start the BDI agent:
+
+```bash
+uv run python theagentcompany/run_tac_bdi.py \
+  --task-image ghcr.io/theagentcompany/admin-arrange-meeting-rooms-image:1.0.0 \
+  --structured-log-dir theagentcompany/tac-structured-logs \
+  --verbose
+```
+
+### Managed batch mode with resume state
+
+This mode reads task images from `tac-tasks.md`, uses the task slug as the container name, preserves stopped containers for later inspection, writes one structured BDI log per task, and keeps resumable progress in `tac-state.json`.
+
+```bash
+uv run python theagentcompany/run_tac_bdi.py \
+  --tasks-file theagentcompany/tac-tasks.md \
+  --structured-log-dir theagentcompany/tac-structured-logs \
+  --state-file theagentcompany/tac-state.json \
+  --verbose
+```
+
+Run the same command again to resume from the saved `executed_tasks` and `missing_tasks`.
+
+## Useful flags
+
 - `--provider codex|native` (default `codex`)
 - `--model <name>`
 - `--max-cycles <n>`
-- `--include-playwright` (attach Playwright MCP server for browser-heavy tasks)
 - `--log-file <path>`
-
-Example with Playwright:
-
-```bash
-uv run python the-agent-company/run_tac_bdi.py \
-  --container tac-test \
-  --include-playwright \
-  --verbose
-```
+- `--structured-log-file <path>` for manual or single-task runs
+- `--structured-log-dir <path>` for managed per-task JSON logs
+- `--state-file <path>` for resumable batch progress
+- `--server-hostname <host>` for `/utils/init.sh`
+- `--init-timeout <seconds>`
 
 ## Notes
 
 - The agent follows TAC Step 2.3 behavior by treating the task as: `Complete the task in /instruction/task.md`.
 - The script executes commands in the container via `docker exec <container> /bin/bash -lc ...`.
-- If you evaluate at the end, ensure required env vars are available for `/utils/eval.py` (`LITELLM_*`, `DECRYPTION_KEY`).
+- In managed batch mode, containers are stopped after each run but not removed.
+- If a task container name already exists from an older run, it is renamed to `<slug>--prev-<timestamp>` before the new run starts.
