@@ -10,6 +10,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import Callable, Sequence
 
@@ -142,6 +143,9 @@ class ManagedTaskOutcome:
     achieved: bool
     error: str | None = None
     desire_status: str | None = None
+    failure_phase: str | None = None
+    container_preserved: bool = False
+    container_running: bool = False
 
 
 def _utc_now_iso() -> str:
@@ -214,6 +218,83 @@ def _run_command_result(cmd: Sequence[str], timeout_seconds: int) -> CommandResu
             stdout=stdout,
             stderr=stderr,
         )
+
+
+def _run_command_result_streaming(
+    cmd: Sequence[str],
+    timeout_seconds: int,
+    *,
+    line_callback: Callable[[str, str], None] | None = None,
+) -> CommandResult:
+    normalized_cmd = tuple(str(part) for part in cmd)
+    stdout_chunks: list[str] = []
+    stderr_chunks: list[str] = []
+
+    def _consume_stream(stream, target: list[str], stream_name: str) -> None:
+        if stream is None:
+            return
+        try:
+            for chunk in iter(stream.readline, ""):
+                target.append(chunk)
+                if line_callback is not None:
+                    line_callback(stream_name, chunk.rstrip("\r\n"))
+        finally:
+            stream.close()
+
+    try:
+        process = subprocess.Popen(
+            list(normalized_cmd),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+        )
+    except FileNotFoundError:
+        return CommandResult(
+            cmd=normalized_cmd,
+            returncode=127,
+            stdout="",
+            stderr=f"Command not found: {normalized_cmd[0]}",
+        )
+
+    stdout_thread = threading.Thread(
+        target=_consume_stream,
+        args=(process.stdout, stdout_chunks, "stdout"),
+        daemon=True,
+    )
+    stderr_thread = threading.Thread(
+        target=_consume_stream,
+        args=(process.stderr, stderr_chunks, "stderr"),
+        daemon=True,
+    )
+    stdout_thread.start()
+    stderr_thread.start()
+
+    timeout_hit = False
+    try:
+        returncode = process.wait(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        timeout_hit = True
+        process.kill()
+        process.wait()
+        returncode = 124
+    finally:
+        stdout_thread.join()
+        stderr_thread.join()
+
+    stdout = "".join(stdout_chunks)
+    stderr = "".join(stderr_chunks)
+
+    if timeout_hit:
+        timeout_message = f"Timed out after {timeout_seconds} seconds."
+        stderr = f"{timeout_message}\n{stderr}".strip() if stderr else timeout_message
+
+    return CommandResult(
+        cmd=normalized_cmd,
+        returncode=returncode,
+        stdout=stdout,
+        stderr=stderr,
+    )
 
 
 def _run_command(cmd: Sequence[str], timeout_seconds: int) -> str:
@@ -420,11 +501,13 @@ def _run_init_in_container(
     container_name: str,
     server_hostname: str,
     timeout_seconds: int,
+    line_callback: Callable[[str, str], None] | None = None,
 ) -> CommandResult:
     init_command = f"SERVER_HOSTNAME={shlex.quote(server_hostname)} bash /utils/init.sh"
-    return _run_command_result(
+    return _run_command_result_streaming(
         [DOCKER_BIN, "exec", container_name, "/bin/bash", "-lc", init_command],
         timeout_seconds=timeout_seconds,
+        line_callback=line_callback,
     )
 
 
@@ -434,6 +517,46 @@ def _structured_log_path_for_task(structured_log_dir: Path, task: ManagedTask) -
 
 def _print_phase(task: ManagedTask, phase: str) -> None:
     print(f"[{task.slug}] {phase}")
+
+
+def _print_prefixed_output(task: ManagedTask, label: str, text: str) -> None:
+    if not text:
+        return
+    for line in text.splitlines():
+        print(f"[{task.slug}] {label}{line}")
+
+
+def _tail_text(text: str, max_lines: int = 40) -> str:
+    lines = text.splitlines()
+    if len(lines) <= max_lines:
+        return "\n".join(lines)
+    return "\n".join(lines[-max_lines:])
+
+
+def _describe_failed_container(task: ManagedTask) -> tuple[bool, bool]:
+    if not _docker_container_exists(task.slug):
+        return False, False
+    return True, _docker_container_running(task.slug)
+
+
+def _format_startup_failure(
+    *,
+    task: ManagedTask,
+    phase: str,
+    error: str,
+    container_preserved: bool,
+    container_running: bool,
+) -> str:
+    lines = [f"failed during {phase}"]
+    if container_running:
+        lines.append(f"container '{task.slug}' is still running for inspection")
+    elif container_preserved:
+        lines.append(f"container '{task.slug}' was preserved but is not running")
+    tail = _tail_text(error.strip(), max_lines=40)
+    if tail:
+        lines.append("failure details:")
+        lines.extend(f"  {line}" for line in tail.splitlines())
+    return "\n".join(lines)
 
 
 def create_agent(
@@ -515,8 +638,12 @@ async def run_managed_task(
     phase_callback: Callable[[str], None] | None = None,
 ) -> ManagedTaskOutcome:
     container_started = False
+    task_achieved = False
+    current_phase: str | None = None
 
     def emit(phase: str) -> None:
+        nonlocal current_phase
+        current_phase = phase
         _print_phase(task, phase)
         if phase_callback is not None:
             phase_callback(phase)
@@ -530,28 +657,67 @@ async def run_managed_task(
         start_result = _start_managed_container(task)
         if not start_result.succeeded:
             return ManagedTaskOutcome(
-                task=task, achieved=False, error=start_result.render()
+                task=task,
+                achieved=False,
+                error=_format_startup_failure(
+                    task=task,
+                    phase=current_phase or "starting_container",
+                    error=start_result.render(),
+                    container_preserved=False,
+                    container_running=False,
+                ),
+                failure_phase=current_phase,
             )
         container_started = True
 
         emit("running_init")
+        init_callback = None
+        if verbose:
+            init_callback = (
+                lambda stream_name, line: print(
+                    f"[{task.slug}][init][{stream_name}] {line}"
+                )
+            )
         init_result = _run_init_in_container(
             container_name=task.slug,
             server_hostname=server_hostname,
             timeout_seconds=init_timeout_seconds,
+            line_callback=init_callback,
         )
         if not init_result.succeeded:
-            return ManagedTaskOutcome(
-                task=task, achieved=False, error=init_result.render()
-            )
-        if READY_MARKER not in init_result.output:
+            container_preserved, container_running = _describe_failed_container(task)
             return ManagedTaskOutcome(
                 task=task,
                 achieved=False,
-                error=(
-                    "Init completed without readiness marker "
-                    f"'{READY_MARKER}'.\nOutput:\n{init_result.output or '(no output)'}"
+                error=_format_startup_failure(
+                    task=task,
+                    phase=current_phase or "running_init",
+                    error=init_result.render(),
+                    container_preserved=container_preserved,
+                    container_running=container_running,
                 ),
+                failure_phase=current_phase,
+                container_preserved=container_preserved,
+                container_running=container_running,
+            )
+        if READY_MARKER not in init_result.output:
+            container_preserved, container_running = _describe_failed_container(task)
+            return ManagedTaskOutcome(
+                task=task,
+                achieved=False,
+                error=_format_startup_failure(
+                    task=task,
+                    phase=current_phase or "running_init",
+                    error=(
+                        "Init completed without readiness marker "
+                        f"'{READY_MARKER}'.\nOutput:\n{init_result.output or '(no output)'}"
+                    ),
+                    container_preserved=container_preserved,
+                    container_running=container_running,
+                ),
+                failure_phase=current_phase,
+                container_preserved=container_preserved,
+                container_running=container_running,
             )
 
         emit("ready")
@@ -572,6 +738,7 @@ async def run_managed_task(
 
         achieved = run_summary.desire_status == "achieved"
         if achieved:
+            task_achieved = True
             return ManagedTaskOutcome(
                 task=task,
                 achieved=True,
@@ -582,14 +749,31 @@ async def run_managed_task(
             f"Task did not reach achieved state. Final desire status: "
             f"{run_summary.desire_status or 'unknown'}"
         )
+        container_preserved, container_running = _describe_failed_container(task)
         return ManagedTaskOutcome(
             task=task,
             achieved=False,
             error=error,
             desire_status=run_summary.desire_status,
+            failure_phase=current_phase,
+            container_preserved=container_preserved,
+            container_running=container_running,
+        )
+    except Exception as exc:
+        container_preserved = container_started and _docker_container_exists(task.slug)
+        container_running = (
+            _docker_container_running(task.slug) if container_preserved else False
+        )
+        return ManagedTaskOutcome(
+            task=task,
+            achieved=False,
+            error=str(exc),
+            failure_phase=current_phase,
+            container_preserved=container_preserved,
+            container_running=container_running,
         )
     finally:
-        if container_started and _docker_container_exists(task.slug):
+        if task_achieved and container_started and _docker_container_exists(task.slug):
             _print_phase(task, "stopping_container")
             _stop_container_if_running(task.slug)
 
@@ -685,6 +869,7 @@ async def run_batch(args: argparse.Namespace) -> int:
             current_phase="failed",
             last_error=outcome.error,
         )
+        _print_prefixed_output(task, "", outcome.error or "Task failed.")
 
     update_batch_state(
         state,
@@ -728,7 +913,7 @@ async def run_managed_single_task(args: argparse.Namespace) -> int:
     if outcome.achieved:
         return 0
 
-    print(outcome.error or "Task failed.")
+    _print_prefixed_output(task, "", outcome.error or "Task failed.")
     return 1
 
 

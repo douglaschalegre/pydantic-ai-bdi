@@ -70,5 +70,8 @@ Run the same command again to resume from the saved `executed_tasks` and `missin
 
 - The agent follows TAC Step 2.3 behavior by treating the task as: `Complete the task in /instruction/task.md`.
 - The script executes commands in the container via `docker exec <container> /bin/bash -lc ...`.
-- In managed batch mode, containers are stopped after each run but not removed.
+- In managed modes, `--verbose` now streams `/utils/init.sh` output live while the runner is waiting for readiness.
+- If startup fails in managed mode, the runner prints the failure details immediately and leaves the failed container available for manual inspection.
+- `docker logs` is not always sufficient for startup debugging here because `/utils/init.sh` runs through `docker exec`, so the most useful output is the streamed init output.
+- In managed batch mode, successfully completed containers are stopped after each run but not removed.
 - If a task container name already exists from an older run, it is renamed to `<slug>--prev-<timestamp>` before the new run starts.
