@@ -1,7 +1,7 @@
 {
   "tasks_file": "theagentcompany/tac-tasks.md",
-  "updated_at": "2026-03-17T20:59:05+00:00",
-  "current_task": "admin-read-survey-and-summarise",
+  "updated_at": "2026-03-18T21:11:46+00:00",
+  "current_task": "ds-coffee-shop-database-management",
   "current_phase": "running_init",
   "executed_tasks": [
     "admin-arrange-meeting-rooms",
@@ -13,16 +13,16 @@
     "admin-employee-info-reconciliation",
     "admin-get-best-vendor-quote",
     "admin-make-spreadsheet",
-    "admin-mass-forms-filling"
-  ],
-  "missing_tasks": [
-    "admin-check-employees-budget-and-reply",
-    "admin-read-survey-and-summarise",
+    "admin-mass-forms-filling",
     "admin-remove-pages-pdf",
     "admin-translate-sales-chat",
     "admin-watch-video",
     "bm-classify-nationality",
-    "ds-answer-numerical-data-question",
+    "ds-answer-numerical-data-question"
+  ],
+  "missing_tasks": [
+    "admin-check-employees-budget-and-reply",
+    "admin-read-survey-and-summarise",
     "ds-answer-spreadsheet-questions",
     "ds-calculate-spreadsheet-stats",
     "ds-coffee-shop-database-management",
