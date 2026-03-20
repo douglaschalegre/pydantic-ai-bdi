@@ -1,8 +1,8 @@
 {
   "tasks_file": "theagentcompany/tac-tasks.md",
-  "updated_at": "2026-03-19T22:07:58+00:00",
-  "current_task": "finance-substantial-presence-test",
-  "current_phase": "running_agent",
+  "updated_at": "2026-03-20T19:02:42+00:00",
+  "current_task": "finance-invoice-matching",
+  "current_phase": "running_init",
   "executed_tasks": [
     "admin-arrange-meeting-rooms",
     "admin-ask-for-meeting-feedback",
@@ -28,20 +28,20 @@
     "ds-predictive-modeling",
     "ds-stock-analysis-slides",
     "ds-visualize-data-in-pie-and-bar-chart",
-    "finance-apply-tax-credit"
-  ],
-  "missing_tasks": [
+    "finance-apply-tax-credit",
     "admin-check-employees-budget-and-reply",
     "admin-read-survey-and-summarise",
     "ds-calculate-spreadsheet-stats",
-    "ds-janusgraph-exercise",
     "ds-organise-report-sus-data",
-    "ds-sql-exercise",
-    "example",
     "finance-budget-variance",
     "finance-check-attendance-payroll",
+    "finance-expense-validation"
+  ],
+  "missing_tasks": [
+    "ds-janusgraph-exercise",
+    "ds-sql-exercise",
+    "example",
     "finance-create-10k-income-report",
-    "finance-expense-validation",
     "finance-find-signatories",
     "finance-invoice-matching",
     "finance-nonqualified-bill-ask-for-reimburse",
