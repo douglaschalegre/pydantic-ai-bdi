@@ -191,7 +191,9 @@ def _candidate_current_png_paths() -> list[Path]:
     return [Path.cwd() / "current.png", REPO_ROOT / "current.png"]
 
 
-def _archive_current_png(task_slug: str, screenshot_root: Path, label: str) -> Path | None:
+def _archive_current_png(
+    task_slug: str, screenshot_root: Path, label: str
+) -> Path | None:
     for source in _candidate_current_png_paths():
         if not source.exists() or not source.is_file():
             continue
@@ -621,7 +623,9 @@ def _start_container_if_stopped(container_name: str) -> bool:
     return True
 
 
-def _stop_other_task_containers(tasks: Sequence[ManagedTask], current_slug: str) -> None:
+def _stop_other_task_containers(
+    tasks: Sequence[ManagedTask], current_slug: str
+) -> None:
     for task in tasks:
         if task.slug == current_slug:
             continue
@@ -721,6 +725,17 @@ def _tail_text(text: str, max_lines: int = 40) -> str:
     if len(lines) <= max_lines:
         return "\n".join(lines)
     return "\n".join(lines[-max_lines:])
+
+
+def _is_usage_limit_error(text: str | None) -> bool:
+    if not text:
+        return False
+    lowered = text.lower()
+    return (
+        "usage_limit_reached" in lowered
+        or "usage limit has been reached" in lowered
+        or "status_code: 429" in lowered
+    )
 
 
 def _serialize_value(value: object) -> str:
@@ -1433,6 +1448,23 @@ async def run_batch(args: argparse.Namespace) -> int:
         except Exception as exc:
             outcome = ManagedTaskOutcome(task=task, achieved=False, error=str(exc))
 
+        if _is_usage_limit_error(outcome.error):
+            _stop_container_if_running(task.slug)
+            update_batch_state(
+                state,
+                state_file,
+                current_task=None,
+                current_phase="paused_usage_limit",
+                last_error=outcome.error,
+            )
+            _print_prefixed_output(
+                task,
+                "",
+                "Stopped batch run because model usage limit was reached. Current task progress was not recorded.",
+            )
+            _print_prefixed_output(task, "", outcome.error or "Usage limit reached.")
+            return 2
+
         if outcome.executed or outcome.evaluated:
             task_statuses = _mark_task_status(
                 state,
@@ -1526,6 +1558,13 @@ async def run_managed_single_task(args: argparse.Namespace) -> int:
         )
     except Exception as exc:
         outcome = ManagedTaskOutcome(task=task, achieved=False, error=str(exc))
+    if _is_usage_limit_error(outcome.error):
+        _stop_container_if_running(task.slug)
+        raise RuntimeError(
+            "Stopped single-task run because model usage limit was reached. "
+            "Current task progress was not recorded.\n"
+            f"{outcome.error}"
+        )
     if outcome.achieved:
         return 0
 
@@ -1583,12 +1622,8 @@ async def run_manual_container(args: argparse.Namespace) -> int:
     )
     _archive_current_png(args.container, screenshot_dir, "final")
 
-    trajectory_path = (
-        structured_log_path.with_suffix(".trajectory.txt")
-    )
-    eval_result_path = (
-        structured_log_path.with_suffix(".eval.json")
-    )
+    trajectory_path = structured_log_path.with_suffix(".trajectory.txt")
+    eval_result_path = structured_log_path.with_suffix(".eval.json")
     evaluation = run_evaluator_for_task(
         container_name=args.container,
         server_hostname=args.server_hostname,
