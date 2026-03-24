@@ -42,7 +42,7 @@ uv run python theagentcompany/run_tac_bdi.py \
 
 ### Managed batch mode with resume state
 
-This mode reads task images from `tac-tasks.md`, uses the task slug as the container name, preserves stopped containers for later inspection, writes one structured BDI log per task, and keeps resumable progress in `tac-state.json`.
+This mode reads task images from `tac-tasks.md`, uses the task slug as the container name, preserves stopped containers for later inspection, writes task artifacts into per-container folders, and keeps resumable progress in `tac-state.json`.
 
 ```bash
 uv run python theagentcompany/run_tac_bdi.py \
@@ -82,9 +82,10 @@ uv run python theagentcompany/run_tac_bdi.py \
 - `--provider codex|native` (default `codex`)
 - `--model <name>`
 - `--max-cycles <n>`
-- `--log-file <path>`
+- `--log-file <path>`; by default task logs go to `theagentcompany/tac_bdi_agent/<container>/terminal.log`
 - `--structured-log-file <path>` for manual or single-task runs
-- `--structured-log-dir <path>` for managed per-task JSON logs
+- `--structured-log-dir <path>` for managed per-task folders like `theagentcompany/tac-structured-logs/<container>/`
+- `--screenshot-dir <path>` for archived `current.png` screenshots grouped by task
 - `--state-file <path>` for resumable batch progress
 - `--eval-only` to evaluate already executed but unevaluated batch tasks
 - `--eval-task <slug>` to evaluate one specific executed task in batch eval-only mode
@@ -96,6 +97,8 @@ uv run python theagentcompany/run_tac_bdi.py \
 - The agent follows TAC Step 2.3 behavior by treating the task as: `Complete the task in /instruction/task.md`.
 - The script executes commands in the container via `docker exec <container> /bin/bash -lc ...`.
 - In managed modes, `--verbose` now streams `/utils/init.sh` output live while the runner is waiting for readiness.
+- If Playwright MCP writes `current.png`, the runner archives it after each cycle into `theagentcompany/tac-screenshots/<task-slug>/`.
+- Structured logs, trajectory files, and eval results are grouped under `theagentcompany/tac-structured-logs/<task-slug>/`.
 - If startup fails in managed mode, the runner prints the failure details immediately and leaves the failed container available for manual inspection.
 - `docker logs` is not always sufficient for startup debugging here because `/utils/init.sh` runs through `docker exec`, so the most useful output is the streamed init output.
 - In managed batch mode, successfully completed containers are stopped after each run but not removed.

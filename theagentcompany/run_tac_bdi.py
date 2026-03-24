@@ -30,6 +30,7 @@ DECRYPTION_KEY = "theagentcompany is all you need"
 DEFAULT_TASKS_FILE = Path(__file__).with_name("tac-tasks.md")
 DEFAULT_LOG_FILE = Path(__file__).with_name("tac_bdi_agent.log")
 DEFAULT_STRUCTURED_LOG_DIR = Path(__file__).with_name("tac-structured-logs")
+DEFAULT_SCREENSHOT_DIR = Path(__file__).with_name("tac-screenshots")
 DEFAULT_STATE_FILE = Path(__file__).with_name("tac-state.json")
 UNSET = object()
 
@@ -184,6 +185,22 @@ def _archive_suffix() -> str:
 
 def _ensure_parent_dir(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+
+
+def _candidate_current_png_paths() -> list[Path]:
+    return [Path.cwd() / "current.png", REPO_ROOT / "current.png"]
+
+
+def _archive_current_png(task_slug: str, screenshot_root: Path, label: str) -> Path | None:
+    for source in _candidate_current_png_paths():
+        if not source.exists() or not source.is_file():
+            continue
+        task_dir = screenshot_root / task_slug
+        task_dir.mkdir(parents=True, exist_ok=True)
+        destination = task_dir / f"{label}.png"
+        shutil.copy2(source, destination)
+        return destination
+    return None
 
 
 def _write_json_file(path: Path, payload: dict[str, object]) -> None:
@@ -668,8 +685,16 @@ def _run_init_in_container(
     )
 
 
+def _task_artifact_dir(root_dir: Path, slug: str) -> Path:
+    return root_dir / slug
+
+
 def _structured_log_path_for_task(structured_log_dir: Path, task: ManagedTask) -> Path:
-    return structured_log_dir / f"{task.slug}.json"
+    return _task_artifact_dir(structured_log_dir, task.slug) / "structured-log.json"
+
+
+def _default_text_log_path_for_slug(log_root: Path, slug: str) -> Path:
+    return _task_artifact_dir(log_root, slug) / "terminal.log"
 
 
 def _trajectory_path_for_log(structured_log_path: Path) -> Path:
@@ -932,13 +957,18 @@ def create_agent(
 
 
 async def run_cycles(
-    agent: BDI, max_cycles: int, cycle_sleep_seconds: float
+    agent: BDI,
+    max_cycles: int,
+    cycle_sleep_seconds: float,
+    cycle_callback: Callable[[int], None] | None = None,
 ) -> AgentRunSummary:
     loop_status = "max_cycles_reached"
     async with agent.run_mcp_servers():
         for cycle in range(1, max_cycles + 1):
             print(f"\n===== TAC BDI Cycle {cycle}/{max_cycles} =====")
             status = await agent.bdi_cycle()
+            if cycle_callback is not None:
+                cycle_callback(cycle)
             if status in ["stopped", "interrupted"]:
                 loop_status = status
                 print(f"Agent cycle ended with status: {status}")
@@ -967,6 +997,7 @@ async def run_managed_task(
     server_hostname: str,
     evaluator_config: EvaluatorConfig,
     init_timeout_seconds: int,
+    screenshot_dir: Path,
     phase_callback: Callable[[str], None] | None = None,
 ) -> ManagedTaskOutcome:
     container_started = False
@@ -1073,7 +1104,13 @@ async def run_managed_task(
             agent,
             max_cycles=max_cycles,
             cycle_sleep_seconds=cycle_sleep_seconds,
+            cycle_callback=lambda cycle: _archive_current_png(
+                task.slug,
+                screenshot_dir,
+                f"cycle-{cycle:03d}",
+            ),
         )
+        _archive_current_png(task.slug, screenshot_dir, "final")
         task_executed = True
 
         emit("running_evaluator")
@@ -1258,7 +1295,9 @@ async def run_batch(args: argparse.Namespace) -> int:
     task_by_slug = _task_mapping(tasks)
     state_file = Path(args.state_file)
     structured_log_dir = Path(args.structured_log_dir)
+    screenshot_dir = Path(args.screenshot_dir)
     structured_log_dir.mkdir(parents=True, exist_ok=True)
+    screenshot_dir.mkdir(parents=True, exist_ok=True)
 
     state = load_or_initialize_batch_state(
         state_file=state_file,
@@ -1382,6 +1421,7 @@ async def run_batch(args: argparse.Namespace) -> int:
                 server_hostname=args.server_hostname,
                 evaluator_config=evaluator_config,
                 init_timeout_seconds=args.init_timeout,
+                screenshot_dir=screenshot_dir,
                 phase_callback=lambda phase, task_slug=task.slug: update_batch_state(
                     state,
                     state_file,
@@ -1451,12 +1491,19 @@ async def run_managed_single_task(args: argparse.Namespace) -> int:
     task = ManagedTask(
         image=args.task_image, slug=task_slug_from_image(args.task_image)
     )
+    default_log_root = DEFAULT_LOG_FILE.with_suffix("")
     structured_log_path = (
         Path(args.structured_log_file)
         if args.structured_log_file
         else _structured_log_path_for_task(Path(args.structured_log_dir), task)
     )
+    log_file_path = (
+        _default_text_log_path_for_slug(default_log_root, task.slug)
+        if args.log_file == str(DEFAULT_LOG_FILE)
+        else Path(args.log_file)
+    )
     _ensure_parent_dir(structured_log_path)
+    _ensure_parent_dir(log_file_path)
 
     try:
         outcome = await run_managed_task(
@@ -1464,7 +1511,7 @@ async def run_managed_single_task(args: argparse.Namespace) -> int:
             model_name=args.model,
             use_codex_provider=args.provider == "codex",
             verbose=args.verbose,
-            log_file_path=args.log_file,
+            log_file_path=str(log_file_path),
             structured_log_file_path=str(structured_log_path),
             max_cycles=args.max_cycles,
             cycle_sleep_seconds=args.cycle_sleep,
@@ -1475,6 +1522,7 @@ async def run_managed_single_task(args: argparse.Namespace) -> int:
                 model=args.eval_model,
             ),
             init_timeout_seconds=args.init_timeout,
+            screenshot_dir=Path(args.screenshot_dir),
         )
     except Exception as exc:
         outcome = ManagedTaskOutcome(task=task, achieved=False, error=str(exc))
@@ -1496,31 +1544,50 @@ async def run_manual_container(args: argparse.Namespace) -> int:
             f"docker inspect output: {check}"
         )
 
+    default_log_root = DEFAULT_LOG_FILE.with_suffix("")
+    log_file_path = (
+        _default_text_log_path_for_slug(default_log_root, args.container)
+        if args.log_file == str(DEFAULT_LOG_FILE)
+        else Path(args.log_file)
+    )
+    structured_log_path = (
+        Path(args.structured_log_file)
+        if args.structured_log_file
+        else _task_artifact_dir(Path(args.structured_log_dir), args.container)
+        / "structured-log.json"
+    )
+    _ensure_parent_dir(log_file_path)
+    _ensure_parent_dir(structured_log_path)
+
     agent = create_agent(
         container_name=args.container,
         model_name=args.model,
         use_codex_provider=args.provider == "codex",
         verbose=args.verbose,
-        log_file_path=args.log_file,
-        structured_log_file_path=args.structured_log_file,
+        log_file_path=str(log_file_path),
+        structured_log_file_path=str(structured_log_path),
     )
+
+    screenshot_dir = Path(args.screenshot_dir)
+    screenshot_dir.mkdir(parents=True, exist_ok=True)
 
     await run_cycles(
-        agent, max_cycles=args.max_cycles, cycle_sleep_seconds=args.cycle_sleep
+        agent,
+        max_cycles=args.max_cycles,
+        cycle_sleep_seconds=args.cycle_sleep,
+        cycle_callback=lambda cycle: _archive_current_png(
+            args.container,
+            screenshot_dir,
+            f"cycle-{cycle:03d}",
+        ),
     )
+    _archive_current_png(args.container, screenshot_dir, "final")
 
-    structured_log_path = (
-        Path(args.structured_log_file) if args.structured_log_file else None
-    )
     trajectory_path = (
         structured_log_path.with_suffix(".trajectory.txt")
-        if structured_log_path is not None
-        else Path(tempfile.gettempdir()) / f"{args.container}.trajectory.txt"
     )
     eval_result_path = (
         structured_log_path.with_suffix(".eval.json")
-        if structured_log_path is not None
-        else Path(tempfile.gettempdir()) / f"{args.container}.eval.json"
     )
     evaluation = run_evaluator_for_task(
         container_name=args.container,
@@ -1610,6 +1677,11 @@ def parse_args() -> argparse.Namespace:
         "--structured-log-dir",
         default=str(DEFAULT_STRUCTURED_LOG_DIR),
         help="Directory for per-task structured logs in managed modes",
+    )
+    parser.add_argument(
+        "--screenshot-dir",
+        default=str(DEFAULT_SCREENSHOT_DIR),
+        help="Directory for per-task archived Playwright screenshots",
     )
     parser.add_argument(
         "--state-file",
