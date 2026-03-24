@@ -148,6 +148,8 @@ class AgentRunSummary:
 class ManagedTaskOutcome:
     task: ManagedTask
     achieved: bool
+    executed: bool = False
+    evaluated: bool = False
     error: str | None = None
     desire_status: str | None = None
     failure_phase: str | None = None
@@ -331,14 +333,18 @@ def _docker_exec(container: str, command: str, timeout_seconds: int = 180) -> st
     return _run_command(cmd, timeout_seconds=timeout_seconds)
 
 
-def _docker_cp_to_container(local_path: Path, container_name: str, container_path: str) -> CommandResult:
+def _docker_cp_to_container(
+    local_path: Path, container_name: str, container_path: str
+) -> CommandResult:
     return _run_command_result(
         [DOCKER_BIN, "cp", str(local_path), f"{container_name}:{container_path}"],
         timeout_seconds=120,
     )
 
 
-def _docker_cp_from_container(container_name: str, container_path: str, local_path: Path) -> CommandResult:
+def _docker_cp_from_container(
+    container_name: str, container_path: str, local_path: Path
+) -> CommandResult:
     _ensure_parent_dir(local_path)
     return _run_command_result(
         [DOCKER_BIN, "cp", f"{container_name}:{container_path}", str(local_path)],
@@ -419,7 +425,11 @@ def _missing_tasks_from_statuses(
         for slug in known_slugs
         if not task_statuses.get(slug, TaskStatus()).executed
     ]
-    if current_task and current_task in known_slugs and current_task not in missing_tasks:
+    if (
+        current_task
+        and current_task in known_slugs
+        and current_task not in missing_tasks
+    ):
         missing_tasks.insert(0, current_task)
     return missing_tasks
 
@@ -594,6 +604,14 @@ def _start_container_if_stopped(container_name: str) -> bool:
     return True
 
 
+def _stop_other_task_containers(tasks: Sequence[ManagedTask], current_slug: str) -> None:
+    for task in tasks:
+        if task.slug == current_slug:
+            continue
+        if _docker_container_running(task.slug):
+            _stop_container_if_running(task.slug)
+
+
 def _archive_existing_container(container_name: str) -> str | None:
     if not _docker_container_exists(container_name):
         return None
@@ -691,7 +709,9 @@ def _serialize_value(value: object) -> str:
         return str(value)
 
 
-def serialize_structured_log_to_trajectory(structured_log_path: Path, trajectory_path: Path) -> Path:
+def serialize_structured_log_to_trajectory(
+    structured_log_path: Path, trajectory_path: Path
+) -> Path:
     entries = json.loads(structured_log_path.read_text(encoding="utf-8"))
     lines: list[str] = []
 
@@ -711,7 +731,9 @@ def serialize_structured_log_to_trajectory(structured_log_path: Path, trajectory
         tool_calls = entry.get("tool_calls") or []
         for call_index, tool_call in enumerate(tool_calls, start=1):
             lines.append(f"[tool_call {call_index}]")
-            func_name = _serialize_value(tool_call.get("func_name") or tool_call.get("tool_name"))
+            func_name = _serialize_value(
+                tool_call.get("func_name") or tool_call.get("tool_name")
+            )
             if func_name:
                 lines.append(f"name: {func_name}")
             args_text = _serialize_value(tool_call.get("args"))
@@ -730,7 +752,9 @@ def serialize_structured_log_to_trajectory(structured_log_path: Path, trajectory
     return trajectory_path
 
 
-def _score_from_result_json(result_json: dict[str, object]) -> tuple[float, float] | None:
+def _score_from_result_json(
+    result_json: dict[str, object],
+) -> tuple[float, float] | None:
     final_score = result_json.get("final_score")
     if isinstance(final_score, dict):
         total = final_score.get("total")
@@ -767,7 +791,9 @@ def run_evaluator_for_task(
 ) -> EvaluationOutcome:
     try:
         if structured_log_path is not None and structured_log_path.exists():
-            serialize_structured_log_to_trajectory(structured_log_path, trajectory_output_path)
+            serialize_structured_log_to_trajectory(
+                structured_log_path, trajectory_output_path
+            )
         else:
             _ensure_parent_dir(trajectory_output_path)
             trajectory_output_path.write_text("", encoding="utf-8")
@@ -945,6 +971,8 @@ async def run_managed_task(
 ) -> ManagedTaskOutcome:
     container_started = False
     task_achieved = False
+    task_executed = False
+    task_evaluated = False
     current_phase: str | None = None
 
     def emit(phase: str) -> None:
@@ -965,6 +993,8 @@ async def run_managed_task(
             return ManagedTaskOutcome(
                 task=task,
                 achieved=False,
+                executed=task_executed,
+                evaluated=task_evaluated,
                 error=_format_startup_failure(
                     task=task,
                     phase=current_phase or "starting_container",
@@ -979,10 +1009,8 @@ async def run_managed_task(
         emit("running_init")
         init_callback = None
         if verbose:
-            init_callback = (
-                lambda stream_name, line: print(
-                    f"[{task.slug}][init][{stream_name}] {line}"
-                )
+            init_callback = lambda stream_name, line: print(
+                f"[{task.slug}][init][{stream_name}] {line}"
             )
         init_result = _run_init_in_container(
             container_name=task.slug,
@@ -996,6 +1024,8 @@ async def run_managed_task(
             return ManagedTaskOutcome(
                 task=task,
                 achieved=False,
+                executed=task_executed,
+                evaluated=task_evaluated,
                 error=_format_startup_failure(
                     task=task,
                     phase=current_phase or "running_init",
@@ -1012,6 +1042,8 @@ async def run_managed_task(
             return ManagedTaskOutcome(
                 task=task,
                 achieved=False,
+                executed=task_executed,
+                evaluated=task_evaluated,
                 error=_format_startup_failure(
                     task=task,
                     phase=current_phase or "running_init",
@@ -1042,6 +1074,7 @@ async def run_managed_task(
             max_cycles=max_cycles,
             cycle_sleep_seconds=cycle_sleep_seconds,
         )
+        task_executed = True
 
         emit("running_evaluator")
         structured_log_path = (
@@ -1075,6 +1108,8 @@ async def run_managed_task(
             return ManagedTaskOutcome(
                 task=task,
                 achieved=False,
+                executed=task_executed,
+                evaluated=task_evaluated,
                 error="\n".join(error_parts),
                 desire_status=run_summary.desire_status,
                 failure_phase=current_phase,
@@ -1088,6 +1123,7 @@ async def run_managed_task(
             if evaluation.result_json is not None
             else None
         )
+        task_evaluated = True
         achieved = score is not None and score[0] >= score[1]
 
         if achieved:
@@ -1095,12 +1131,16 @@ async def run_managed_task(
             return ManagedTaskOutcome(
                 task=task,
                 achieved=True,
+                executed=task_executed,
+                evaluated=task_evaluated,
                 desire_status=run_summary.desire_status,
                 evaluation_result_path=evaluation.result_path,
             )
 
         if score is None:
-            error = "Task evaluation completed but result format was missing checkpoints."
+            error = (
+                "Task evaluation completed but result format was missing checkpoints."
+            )
         else:
             error = (
                 f"Task did not pass evaluator. Score: {score[0]:g}/{score[1]:g}. "
@@ -1110,6 +1150,8 @@ async def run_managed_task(
         return ManagedTaskOutcome(
             task=task,
             achieved=False,
+            executed=task_executed,
+            evaluated=task_evaluated,
             error=error,
             desire_status=run_summary.desire_status,
             failure_phase=current_phase,
@@ -1125,6 +1167,8 @@ async def run_managed_task(
         return ManagedTaskOutcome(
             task=task,
             achieved=False,
+            executed=task_executed,
+            evaluated=task_evaluated,
             error=str(exc),
             failure_phase=current_phase,
             container_preserved=container_preserved,
@@ -1150,7 +1194,8 @@ def _next_missing_snapshot(
     return [
         task_by_slug[slug]
         for slug in missing_tasks
-        if slug in task_by_slug and not state.task_statuses.get(slug, TaskStatus()).executed
+        if slug in task_by_slug
+        and not state.task_statuses.get(slug, TaskStatus()).executed
     ]
 
 
@@ -1245,6 +1290,7 @@ async def run_batch(args: argparse.Namespace) -> int:
 
         for index, task in enumerate(pending_tasks, start=1):
             print(f"\n[{index}/{len(pending_tasks)}] Evaluating {task.slug}")
+            _stop_other_task_containers(tasks, task.slug)
             update_batch_state(
                 state,
                 state_file,
@@ -1294,7 +1340,9 @@ async def run_batch(args: argparse.Namespace) -> int:
             current_phase="completed",
             last_error=state.last_error,
         )
-        executed_tasks, evaluated_tasks = _task_status_lists(state.task_statuses, known_slugs=[task.slug for task in tasks])
+        executed_tasks, evaluated_tasks = _task_status_lists(
+            state.task_statuses, known_slugs=[task.slug for task in tasks]
+        )
         print(f"evaluated tasks: {evaluated_tasks}")
         unevaluated = [slug for slug in executed_tasks if slug not in evaluated_tasks]
         print(f"unevaluated executed tasks: {unevaluated}")
@@ -1310,6 +1358,7 @@ async def run_batch(args: argparse.Namespace) -> int:
             continue
 
         print(f"\n[{index}/{len(pending_tasks)}] Running {task.slug}")
+        _stop_other_task_containers(tasks, task.slug)
         update_batch_state(
             state,
             state_file,
@@ -1344,19 +1393,25 @@ async def run_batch(args: argparse.Namespace) -> int:
         except Exception as exc:
             outcome = ManagedTaskOutcome(task=task, achieved=False, error=str(exc))
 
-        if outcome.achieved:
+        if outcome.executed or outcome.evaluated:
             task_statuses = _mark_task_status(
                 state,
                 task.slug,
-                executed=True,
-                evaluated=True,
+                executed=outcome.executed,
+                evaluated=outcome.evaluated,
             )
+            update_batch_state(
+                state,
+                state_file,
+                task_statuses=task_statuses,
+            )
+
+        if outcome.achieved:
             update_batch_state(
                 state,
                 state_file,
                 current_task=task.slug,
                 current_phase="achieved",
-                task_statuses=task_statuses,
                 last_error=None,
             )
             continue
@@ -1375,13 +1430,17 @@ async def run_batch(args: argparse.Namespace) -> int:
         state_file,
         current_task=None,
         current_phase="completed",
-        last_error=state.last_error if _next_missing_snapshot(tasks=tasks, state=state) else None,
+        last_error=state.last_error
+        if _next_missing_snapshot(tasks=tasks, state=state)
+        else None,
     )
 
     executed_tasks, evaluated_tasks = _task_status_lists(
         state.task_statuses, known_slugs=[task.slug for task in tasks]
     )
-    missing_tasks = [task.slug for task in _next_missing_snapshot(tasks=tasks, state=state)]
+    missing_tasks = [
+        task.slug for task in _next_missing_snapshot(tasks=tasks, state=state)
+    ]
     print(f"executed tasks: {executed_tasks}")
     print(f"evaluated tasks: {evaluated_tasks}")
     print(f"missing tasks: {missing_tasks}")
@@ -1446,11 +1505,13 @@ async def run_manual_container(args: argparse.Namespace) -> int:
         structured_log_file_path=args.structured_log_file,
     )
 
-    summary = await run_cycles(
+    await run_cycles(
         agent, max_cycles=args.max_cycles, cycle_sleep_seconds=args.cycle_sleep
     )
 
-    structured_log_path = Path(args.structured_log_file) if args.structured_log_file else None
+    structured_log_path = (
+        Path(args.structured_log_file) if args.structured_log_file else None
+    )
     trajectory_path = (
         structured_log_path.with_suffix(".trajectory.txt")
         if structured_log_path is not None
@@ -1474,7 +1535,9 @@ async def run_manual_container(args: argparse.Namespace) -> int:
         eval_result_output_path=eval_result_path,
     )
     if not evaluation.succeeded:
-        raise RuntimeError(f"Evaluation failed for container '{args.container}'.\n{evaluation.error}")
+        raise RuntimeError(
+            f"Evaluation failed for container '{args.container}'.\n{evaluation.error}"
+        )
 
     score = (
         _score_from_result_json(evaluation.result_json or {})
