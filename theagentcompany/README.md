@@ -52,11 +52,11 @@ uv run python theagentcompany/run_tac_bdi.py \
   --verbose
 ```
 
-Run the same command again to resume from the saved `executed_tasks` and `missing_tasks`.
+Run the same command again to resume from the saved per-task status object; missing tasks are derived from tasks whose `executed` flag is still false.
 
 ### Batch evaluation-only mode
 
-Use this when tasks were already completed and you want to run TAC evaluation later without rerunning the agent. The runner will look at `executed_tasks`, skip ones already listed in `evaluated_tasks`, temporarily start preserved containers if needed, and write `*.eval.json` beside each structured log.
+Use this when tasks were already completed and you want to run TAC evaluation later without rerunning the agent. The runner will look at the saved per-task statuses, skip tasks already marked as evaluated, temporarily start preserved containers if needed, and write `*.eval.json` beside each structured log.
 
 ```bash
 uv run python theagentcompany/run_tac_bdi.py \
@@ -99,5 +99,5 @@ uv run python theagentcompany/run_tac_bdi.py \
 - If startup fails in managed mode, the runner prints the failure details immediately and leaves the failed container available for manual inspection.
 - `docker logs` is not always sufficient for startup debugging here because `/utils/init.sh` runs through `docker exec`, so the most useful output is the streamed init output.
 - In managed batch mode, successfully completed containers are stopped after each run but not removed.
-- Batch state now tracks both `executed_tasks` and `evaluated_tasks`.
+- Batch state now tracks per-task status in `task_statuses`, with `executed` and `evaluated` flags for each slug.
 - If a task container name already exists from an older run, it is renamed to `<slug>--prev-<timestamp>` before the new run starts.

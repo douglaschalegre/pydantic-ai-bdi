@@ -94,14 +94,18 @@ class ManagedTask:
 
 
 @dataclass
+class TaskStatus:
+    executed: bool = False
+    evaluated: bool = False
+
+
+@dataclass
 class BatchState:
     tasks_file: str
     updated_at: str
     current_task: str | None
     current_phase: str | None
-    executed_tasks: list[str]
-    evaluated_tasks: list[str]
-    missing_tasks: list[str]
+    task_statuses: dict[str, TaskStatus]
     last_error: str | None
 
 
@@ -384,6 +388,85 @@ def _task_mapping(tasks: Sequence[ManagedTask]) -> dict[str, ManagedTask]:
     return {task.slug: task for task in tasks}
 
 
+def _empty_task_statuses(known_slugs: Sequence[str]) -> dict[str, TaskStatus]:
+    return {slug: TaskStatus() for slug in known_slugs}
+
+
+def _task_status_lists(
+    task_statuses: dict[str, TaskStatus],
+    known_slugs: Sequence[str],
+) -> tuple[list[str], list[str]]:
+    executed_tasks: list[str] = []
+    evaluated_tasks: list[str] = []
+    for slug in known_slugs:
+        status = task_statuses.get(slug)
+        if status is None:
+            continue
+        if status.executed:
+            executed_tasks.append(slug)
+        if status.executed and status.evaluated:
+            evaluated_tasks.append(slug)
+    return executed_tasks, evaluated_tasks
+
+
+def _missing_tasks_from_statuses(
+    task_statuses: dict[str, TaskStatus],
+    known_slugs: Sequence[str],
+    current_task: str | None = None,
+) -> list[str]:
+    missing_tasks = [
+        slug
+        for slug in known_slugs
+        if not task_statuses.get(slug, TaskStatus()).executed
+    ]
+    if current_task and current_task in known_slugs and current_task not in missing_tasks:
+        missing_tasks.insert(0, current_task)
+    return missing_tasks
+
+
+def _normalize_task_statuses(
+    raw_state: dict[str, object], known_slugs: Sequence[str]
+) -> dict[str, TaskStatus]:
+    known_slug_set = set(known_slugs)
+    task_statuses = _empty_task_statuses(known_slugs)
+
+    raw_task_statuses = raw_state.get("task_statuses")
+    if isinstance(raw_task_statuses, dict):
+        for slug, raw_status in raw_task_statuses.items():
+            slug_text = str(slug)
+            if slug_text not in known_slug_set or not isinstance(raw_status, dict):
+                continue
+            executed = bool(raw_status.get("executed", False))
+            evaluated = bool(raw_status.get("evaluated", False)) and executed
+            task_statuses[slug_text] = TaskStatus(
+                executed=executed,
+                evaluated=evaluated,
+            )
+        return task_statuses
+
+    executed_tasks = [
+        slug
+        for slug in _dedupe_preserve_order(
+            [str(slug) for slug in raw_state.get("executed_tasks", [])]
+        )
+        if slug in known_slug_set
+    ]
+    executed_set = set(executed_tasks)
+    evaluated_tasks = [
+        slug
+        for slug in _dedupe_preserve_order(
+            [str(slug) for slug in raw_state.get("evaluated_tasks", [])]
+        )
+        if slug in known_slug_set and slug in executed_set
+    ]
+
+    for slug in executed_tasks:
+        task_statuses[slug].executed = True
+    for slug in evaluated_tasks:
+        task_statuses[slug].evaluated = True
+    return task_statuses
+
+
 def load_or_initialize_batch_state(
     *,
     state_file: Path,
@@ -395,42 +478,19 @@ def load_or_initialize_batch_state(
 
     if state_file.exists():
         raw_state = json.loads(state_file.read_text(encoding="utf-8"))
-        executed_tasks = [
-            slug
-            for slug in _dedupe_preserve_order(
-                [str(slug) for slug in raw_state.get("executed_tasks", [])]
-            )
-            if slug in known_slug_set
-        ]
+        task_statuses = _normalize_task_statuses(raw_state, known_slugs)
+        executed_tasks, _ = _task_status_lists(task_statuses, known_slugs)
         executed_set = set(executed_tasks)
-        evaluated_tasks = [
-            slug
-            for slug in _dedupe_preserve_order(
-                [str(slug) for slug in raw_state.get("evaluated_tasks", [])]
-            )
-            if slug in known_slug_set and slug in executed_set
-        ]
-        missing_tasks = [
-            slug
-            for slug in _dedupe_preserve_order(
-                [str(slug) for slug in raw_state.get("missing_tasks", [])]
-            )
-            if slug in known_slug_set and slug not in executed_set
-        ]
         current_task = _normalize_optional_string(raw_state.get("current_task"))
         if current_task not in known_slug_set or current_task in executed_set:
             current_task = None
-        if current_task and current_task not in missing_tasks:
-            missing_tasks.insert(0, current_task)
 
         state = BatchState(
             tasks_file=str(tasks_file),
             updated_at=_utc_now_iso(),
             current_task=current_task,
             current_phase=_normalize_optional_string(raw_state.get("current_phase")),
-            executed_tasks=executed_tasks,
-            evaluated_tasks=evaluated_tasks,
-            missing_tasks=missing_tasks,
+            task_statuses=task_statuses,
             last_error=_normalize_optional_string(raw_state.get("last_error")),
         )
     else:
@@ -439,9 +499,7 @@ def load_or_initialize_batch_state(
             updated_at=_utc_now_iso(),
             current_task=None,
             current_phase=None,
-            executed_tasks=[],
-            evaluated_tasks=[],
-            missing_tasks=list(known_slugs),
+            task_statuses=_empty_task_statuses(known_slugs),
             last_error=None,
         )
 
@@ -460,24 +518,37 @@ def update_batch_state(
     *,
     current_task: object = UNSET,
     current_phase: object = UNSET,
-    executed_tasks: object = UNSET,
-    evaluated_tasks: object = UNSET,
-    missing_tasks: object = UNSET,
+    task_statuses: object = UNSET,
     last_error: object = UNSET,
 ) -> None:
     if current_task is not UNSET:
         state.current_task = current_task
     if current_phase is not UNSET:
         state.current_phase = current_phase
-    if executed_tasks is not UNSET:
-        state.executed_tasks = list(executed_tasks)
-    if evaluated_tasks is not UNSET:
-        state.evaluated_tasks = list(evaluated_tasks)
-    if missing_tasks is not UNSET:
-        state.missing_tasks = list(missing_tasks)
+    if task_statuses is not UNSET:
+        state.task_statuses = dict(task_statuses)
     if last_error is not UNSET:
         state.last_error = last_error
     persist_batch_state(state_file, state)
+
+
+def _mark_task_status(
+    state: BatchState,
+    slug: str,
+    *,
+    executed: bool | None = None,
+    evaluated: bool | None = None,
+) -> dict[str, TaskStatus]:
+    task_statuses = dict(state.task_statuses)
+    current = task_statuses.get(slug, TaskStatus())
+    next_status = TaskStatus(
+        executed=current.executed if executed is None else executed,
+        evaluated=current.evaluated if evaluated is None else evaluated,
+    )
+    if not next_status.executed:
+        next_status.evaluated = False
+    task_statuses[slug] = next_status
+    return task_statuses
 
 
 def _docker_container_exists(container_name: str) -> bool:
@@ -1071,10 +1142,15 @@ def _next_missing_snapshot(
     state: BatchState,
 ) -> list[ManagedTask]:
     task_by_slug = _task_mapping(tasks)
+    missing_tasks = _missing_tasks_from_statuses(
+        state.task_statuses,
+        [task.slug for task in tasks],
+        state.current_task,
+    )
     return [
         task_by_slug[slug]
-        for slug in state.missing_tasks
-        if slug in task_by_slug and slug not in set(state.executed_tasks)
+        for slug in missing_tasks
+        if slug in task_by_slug and not state.task_statuses.get(slug, TaskStatus()).executed
     ]
 
 
@@ -1084,12 +1160,10 @@ def _next_unevaluated_snapshot(
     state: BatchState,
 ) -> list[ManagedTask]:
     task_by_slug = _task_mapping(tasks)
-    executed_set = set(state.executed_tasks)
-    evaluated_set = set(state.evaluated_tasks)
     return [
         task_by_slug[slug]
-        for slug in state.executed_tasks
-        if slug in task_by_slug and slug in executed_set and slug not in evaluated_set
+        for slug, status in state.task_statuses.items()
+        if slug in task_by_slug and status.executed and not status.evaluated
     ]
 
 
@@ -1159,9 +1233,9 @@ async def run_batch(args: argparse.Namespace) -> int:
                 raise RuntimeError(
                     f"Task slug '{args.eval_task}' not found in {tasks_file}."
                 )
-            if args.eval_task not in set(state.executed_tasks):
+            if not state.task_statuses.get(args.eval_task, TaskStatus()).executed:
                 raise RuntimeError(
-                    f"Task slug '{args.eval_task}' is not in executed_tasks, so there is no completed run to evaluate."
+                    f"Task slug '{args.eval_task}' is not marked executed, so there is no completed run to evaluate."
                 )
             pending_tasks = [task_by_slug[args.eval_task]]
         else:
@@ -1186,15 +1260,13 @@ async def run_batch(args: argparse.Namespace) -> int:
                 evaluator_config=evaluator_config,
             )
             if evaluation.succeeded:
-                evaluated_tasks = list(state.evaluated_tasks)
-                if task.slug not in evaluated_tasks:
-                    evaluated_tasks.append(task.slug)
+                task_statuses = _mark_task_status(state, task.slug, evaluated=True)
                 update_batch_state(
                     state,
                     state_file,
                     current_task=task.slug,
                     current_phase="evaluated",
-                    evaluated_tasks=evaluated_tasks,
+                    task_statuses=task_statuses,
                     last_error=None,
                 )
                 score = (
@@ -1222,8 +1294,9 @@ async def run_batch(args: argparse.Namespace) -> int:
             current_phase="completed",
             last_error=state.last_error,
         )
-        print(f"evaluated tasks: {state.evaluated_tasks}")
-        unevaluated = [slug for slug in state.executed_tasks if slug not in state.evaluated_tasks]
+        executed_tasks, evaluated_tasks = _task_status_lists(state.task_statuses, known_slugs=[task.slug for task in tasks])
+        print(f"evaluated tasks: {evaluated_tasks}")
+        unevaluated = [slug for slug in executed_tasks if slug not in evaluated_tasks]
         print(f"unevaluated executed tasks: {unevaluated}")
         return 0 if not unevaluated else 1
 
@@ -1233,7 +1306,7 @@ async def run_batch(args: argparse.Namespace) -> int:
     print(f"Pending tasks this pass: {len(pending_tasks)}")
 
     for index, task in enumerate(pending_tasks, start=1):
-        if task.slug in state.executed_tasks:
+        if state.task_statuses.get(task.slug, TaskStatus()).executed:
             continue
 
         print(f"\n[{index}/{len(pending_tasks)}] Running {task.slug}")
@@ -1272,21 +1345,18 @@ async def run_batch(args: argparse.Namespace) -> int:
             outcome = ManagedTaskOutcome(task=task, achieved=False, error=str(exc))
 
         if outcome.achieved:
-            executed_tasks = list(state.executed_tasks)
-            if task.slug not in executed_tasks:
-                executed_tasks.append(task.slug)
-            evaluated_tasks = list(state.evaluated_tasks)
-            if task.slug not in evaluated_tasks:
-                evaluated_tasks.append(task.slug)
-            missing_tasks = [slug for slug in state.missing_tasks if slug != task.slug]
+            task_statuses = _mark_task_status(
+                state,
+                task.slug,
+                executed=True,
+                evaluated=True,
+            )
             update_batch_state(
                 state,
                 state_file,
                 current_task=task.slug,
                 current_phase="achieved",
-                executed_tasks=executed_tasks,
-                evaluated_tasks=evaluated_tasks,
-                missing_tasks=missing_tasks,
+                task_statuses=task_statuses,
                 last_error=None,
             )
             continue
@@ -1305,13 +1375,17 @@ async def run_batch(args: argparse.Namespace) -> int:
         state_file,
         current_task=None,
         current_phase="completed",
-        last_error=state.last_error if state.missing_tasks else None,
+        last_error=state.last_error if _next_missing_snapshot(tasks=tasks, state=state) else None,
     )
 
-    print(f"executed tasks: {state.executed_tasks}")
-    print(f"evaluated tasks: {state.evaluated_tasks}")
-    print(f"missing tasks: {state.missing_tasks}")
-    return 0 if not state.missing_tasks else 1
+    executed_tasks, evaluated_tasks = _task_status_lists(
+        state.task_statuses, known_slugs=[task.slug for task in tasks]
+    )
+    missing_tasks = [task.slug for task in _next_missing_snapshot(tasks=tasks, state=state)]
+    print(f"executed tasks: {executed_tasks}")
+    print(f"evaluated tasks: {evaluated_tasks}")
+    print(f"missing tasks: {missing_tasks}")
+    return 0 if not missing_tasks else 1
 
 
 async def run_managed_single_task(args: argparse.Namespace) -> int:
