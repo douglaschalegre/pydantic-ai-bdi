@@ -54,6 +54,29 @@ uv run python theagentcompany/run_tac_bdi.py \
 
 Run the same command again to resume from the saved `executed_tasks` and `missing_tasks`.
 
+### Batch evaluation-only mode
+
+Use this when tasks were already completed and you want to run TAC evaluation later without rerunning the agent. The runner will look at `executed_tasks`, skip ones already listed in `evaluated_tasks`, temporarily start preserved containers if needed, and write `*.eval.json` beside each structured log.
+
+```bash
+uv run python theagentcompany/run_tac_bdi.py \
+  --tasks-file theagentcompany/tac-tasks.md \
+  --structured-log-dir theagentcompany/tac-structured-logs \
+  --state-file theagentcompany/tac-state.json \
+  --eval-only
+```
+
+To inspect one completed task closely, target a single slug:
+
+```bash
+uv run python theagentcompany/run_tac_bdi.py \
+  --tasks-file theagentcompany/tac-tasks.md \
+  --structured-log-dir theagentcompany/tac-structured-logs \
+  --state-file theagentcompany/tac-state.json \
+  --eval-only \
+  --eval-task admin-arrange-meeting-rooms
+```
+
 ## Useful flags
 
 - `--provider codex|native` (default `codex`)
@@ -63,6 +86,8 @@ Run the same command again to resume from the saved `executed_tasks` and `missin
 - `--structured-log-file <path>` for manual or single-task runs
 - `--structured-log-dir <path>` for managed per-task JSON logs
 - `--state-file <path>` for resumable batch progress
+- `--eval-only` to evaluate already executed but unevaluated batch tasks
+- `--eval-task <slug>` to evaluate one specific executed task in batch eval-only mode
 - `--server-hostname <host>` for `/utils/init.sh`
 - `--init-timeout <seconds>`
 
@@ -74,4 +99,5 @@ Run the same command again to resume from the saved `executed_tasks` and `missin
 - If startup fails in managed mode, the runner prints the failure details immediately and leaves the failed container available for manual inspection.
 - `docker logs` is not always sufficient for startup debugging here because `/utils/init.sh` runs through `docker exec`, so the most useful output is the streamed init output.
 - In managed batch mode, successfully completed containers are stopped after each run but not removed.
+- Batch state now tracks both `executed_tasks` and `evaluated_tasks`.
 - If a task container name already exists from an older run, it is renamed to `<slug>--prev-<timestamp>` before the new run starts.

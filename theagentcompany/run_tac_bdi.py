@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 import json
 import os
+import tempfile
 import shlex
 import shutil
 import subprocess
@@ -25,6 +26,7 @@ from pydantic_ai.mcp import MCPServerStdio
 
 
 READY_MARKER = "All services are ready!"
+DECRYPTION_KEY = "theagentcompany is all you need"
 DEFAULT_TASKS_FILE = Path(__file__).with_name("tac-tasks.md")
 DEFAULT_LOG_FILE = Path(__file__).with_name("tac_bdi_agent.log")
 DEFAULT_STRUCTURED_LOG_DIR = Path(__file__).with_name("tac-structured-logs")
@@ -98,6 +100,7 @@ class BatchState:
     current_task: str | None
     current_phase: str | None
     executed_tasks: list[str]
+    evaluated_tasks: list[str]
     missing_tasks: list[str]
     last_error: str | None
 
@@ -146,6 +149,23 @@ class ManagedTaskOutcome:
     failure_phase: str | None = None
     container_preserved: bool = False
     container_running: bool = False
+    evaluation_result_path: str | None = None
+
+
+@dataclass(frozen=True)
+class EvaluationOutcome:
+    succeeded: bool
+    result_path: str | None
+    trajectory_path: str | None
+    result_json: dict[str, object] | None = None
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class EvaluatorConfig:
+    api_key: str
+    base_url: str
+    model: str
 
 
 def _utc_now_iso() -> str:
@@ -307,6 +327,21 @@ def _docker_exec(container: str, command: str, timeout_seconds: int = 180) -> st
     return _run_command(cmd, timeout_seconds=timeout_seconds)
 
 
+def _docker_cp_to_container(local_path: Path, container_name: str, container_path: str) -> CommandResult:
+    return _run_command_result(
+        [DOCKER_BIN, "cp", str(local_path), f"{container_name}:{container_path}"],
+        timeout_seconds=120,
+    )
+
+
+def _docker_cp_from_container(container_name: str, container_path: str, local_path: Path) -> CommandResult:
+    _ensure_parent_dir(local_path)
+    return _run_command_result(
+        [DOCKER_BIN, "cp", f"{container_name}:{container_path}", str(local_path)],
+        timeout_seconds=120,
+    )
+
+
 def _build_playwright_server() -> MCPServerStdio:
     return MCPServerStdio(
         NPX_BIN,
@@ -368,6 +403,13 @@ def load_or_initialize_batch_state(
             if slug in known_slug_set
         ]
         executed_set = set(executed_tasks)
+        evaluated_tasks = [
+            slug
+            for slug in _dedupe_preserve_order(
+                [str(slug) for slug in raw_state.get("evaluated_tasks", [])]
+            )
+            if slug in known_slug_set and slug in executed_set
+        ]
         missing_tasks = [
             slug
             for slug in _dedupe_preserve_order(
@@ -387,6 +429,7 @@ def load_or_initialize_batch_state(
             current_task=current_task,
             current_phase=_normalize_optional_string(raw_state.get("current_phase")),
             executed_tasks=executed_tasks,
+            evaluated_tasks=evaluated_tasks,
             missing_tasks=missing_tasks,
             last_error=_normalize_optional_string(raw_state.get("last_error")),
         )
@@ -397,6 +440,7 @@ def load_or_initialize_batch_state(
             current_task=None,
             current_phase=None,
             executed_tasks=[],
+            evaluated_tasks=[],
             missing_tasks=list(known_slugs),
             last_error=None,
         )
@@ -417,6 +461,7 @@ def update_batch_state(
     current_task: object = UNSET,
     current_phase: object = UNSET,
     executed_tasks: object = UNSET,
+    evaluated_tasks: object = UNSET,
     missing_tasks: object = UNSET,
     last_error: object = UNSET,
 ) -> None:
@@ -426,6 +471,8 @@ def update_batch_state(
         state.current_phase = current_phase
     if executed_tasks is not UNSET:
         state.executed_tasks = list(executed_tasks)
+    if evaluated_tasks is not UNSET:
+        state.evaluated_tasks = list(evaluated_tasks)
     if missing_tasks is not UNSET:
         state.missing_tasks = list(missing_tasks)
     if last_error is not UNSET:
@@ -460,6 +507,20 @@ def _stop_container_if_running(container_name: str) -> None:
         raise RuntimeError(
             f"Could not stop container '{container_name}'.\n{result.render()}"
         )
+
+
+def _start_container_if_stopped(container_name: str) -> bool:
+    if _docker_container_running(container_name):
+        return False
+
+    result = _run_command_result(
+        [DOCKER_BIN, "start", container_name], timeout_seconds=90
+    )
+    if not result.succeeded:
+        raise RuntimeError(
+            f"Could not start container '{container_name}'.\n{result.render()}"
+        )
+    return True
 
 
 def _archive_existing_container(container_name: str) -> str | None:
@@ -500,10 +561,17 @@ def _run_init_in_container(
     *,
     container_name: str,
     server_hostname: str,
+    evaluator_config: EvaluatorConfig,
     timeout_seconds: int,
     line_callback: Callable[[str, str], None] | None = None,
 ) -> CommandResult:
-    init_command = f"SERVER_HOSTNAME={shlex.quote(server_hostname)} bash /utils/init.sh"
+    init_command = (
+        f"SERVER_HOSTNAME={shlex.quote(server_hostname)} "
+        f"LITELLM_API_KEY={shlex.quote(evaluator_config.api_key)} "
+        f"LITELLM_BASE_URL={shlex.quote(evaluator_config.base_url)} "
+        f"LITELLM_MODEL={shlex.quote(evaluator_config.model)} "
+        "bash /utils/init.sh"
+    )
     return _run_command_result_streaming(
         [DOCKER_BIN, "exec", container_name, "/bin/bash", "-lc", init_command],
         timeout_seconds=timeout_seconds,
@@ -513,6 +581,14 @@ def _run_init_in_container(
 
 def _structured_log_path_for_task(structured_log_dir: Path, task: ManagedTask) -> Path:
     return structured_log_dir / f"{task.slug}.json"
+
+
+def _trajectory_path_for_log(structured_log_path: Path) -> Path:
+    return structured_log_path.with_suffix(".trajectory.txt")
+
+
+def _eval_result_path_for_log(structured_log_path: Path) -> Path:
+    return structured_log_path.with_suffix(".eval.json")
 
 
 def _print_phase(task: ManagedTask, phase: str) -> None:
@@ -531,6 +607,164 @@ def _tail_text(text: str, max_lines: int = 40) -> str:
     if len(lines) <= max_lines:
         return "\n".join(lines)
     return "\n".join(lines[-max_lines:])
+
+
+def _serialize_value(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    try:
+        return json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)
+    except TypeError:
+        return str(value)
+
+
+def serialize_structured_log_to_trajectory(structured_log_path: Path, trajectory_path: Path) -> Path:
+    entries = json.loads(structured_log_path.read_text(encoding="utf-8"))
+    lines: list[str] = []
+
+    for index, entry in enumerate(entries, start=1):
+        lines.append(f"=== EVENT {index} ===")
+
+        user_text = _serialize_value(entry.get("user"))
+        if user_text:
+            lines.append("[user]")
+            lines.append(user_text)
+
+        assistant_text = _serialize_value(entry.get("assistant"))
+        if assistant_text:
+            lines.append("[assistant]")
+            lines.append(assistant_text)
+
+        tool_calls = entry.get("tool_calls") or []
+        for call_index, tool_call in enumerate(tool_calls, start=1):
+            lines.append(f"[tool_call {call_index}]")
+            func_name = _serialize_value(tool_call.get("func_name") or tool_call.get("tool_name"))
+            if func_name:
+                lines.append(f"name: {func_name}")
+            args_text = _serialize_value(tool_call.get("args"))
+            if args_text:
+                lines.append("args:")
+                lines.append(args_text)
+            result_text = _serialize_value(tool_call.get("result"))
+            if result_text:
+                lines.append("result:")
+                lines.append(result_text)
+
+        lines.append("")
+
+    _ensure_parent_dir(trajectory_path)
+    trajectory_path.write_text("\n".join(lines), encoding="utf-8")
+    return trajectory_path
+
+
+def _score_from_result_json(result_json: dict[str, object]) -> tuple[float, float] | None:
+    final_score = result_json.get("final_score")
+    if isinstance(final_score, dict):
+        total = final_score.get("total")
+        result = final_score.get("result")
+        if total is not None and result is not None:
+            return float(result), float(total)
+
+    checkpoints = result_json.get("checkpoints")
+    if not isinstance(checkpoints, list) or not checkpoints:
+        return None
+
+    total_points = 0.0
+    earned_points = 0.0
+    for checkpoint in checkpoints:
+        if not isinstance(checkpoint, dict):
+            return None
+        total = checkpoint.get("total")
+        result = checkpoint.get("result")
+        if total is None or result is None:
+            return None
+        total_points += float(total)
+        earned_points += float(result)
+    return earned_points, total_points
+
+
+def run_evaluator_for_task(
+    *,
+    container_name: str,
+    server_hostname: str,
+    evaluator_config: EvaluatorConfig,
+    structured_log_path: Path | None,
+    trajectory_output_path: Path,
+    eval_result_output_path: Path,
+) -> EvaluationOutcome:
+    try:
+        if structured_log_path is not None and structured_log_path.exists():
+            serialize_structured_log_to_trajectory(structured_log_path, trajectory_output_path)
+        else:
+            _ensure_parent_dir(trajectory_output_path)
+            trajectory_output_path.write_text("", encoding="utf-8")
+
+        container_trajectory_path = "/tmp/tac_eval_trajectory.txt"
+        container_result_path = "/tmp/tac_eval_result.json"
+
+        cp_in_result = _docker_cp_to_container(
+            trajectory_output_path,
+            container_name,
+            container_trajectory_path,
+        )
+        if not cp_in_result.succeeded:
+            return EvaluationOutcome(
+                succeeded=False,
+                result_path=None,
+                trajectory_path=str(trajectory_output_path),
+                error=cp_in_result.render(),
+            )
+
+        eval_command = (
+            f"DECRYPTION_KEY={shlex.quote(DECRYPTION_KEY)} "
+            f"SERVER_HOSTNAME={shlex.quote(server_hostname)} "
+            f"LITELLM_API_KEY={shlex.quote(evaluator_config.api_key)} "
+            f"LITELLM_BASE_URL={shlex.quote(evaluator_config.base_url)} "
+            f"LITELLM_MODEL={shlex.quote(evaluator_config.model)} "
+            f"python_default /utils/eval.py --trajectory_path {shlex.quote(container_trajectory_path)} "
+            f"--result_path {shlex.quote(container_result_path)}"
+        )
+        eval_result = _run_command_result(
+            [DOCKER_BIN, "exec", container_name, "/bin/bash", "-lc", eval_command],
+            timeout_seconds=300,
+        )
+        if not eval_result.succeeded:
+            return EvaluationOutcome(
+                succeeded=False,
+                result_path=None,
+                trajectory_path=str(trajectory_output_path),
+                error=eval_result.render(),
+            )
+
+        cp_out_result = _docker_cp_from_container(
+            container_name,
+            container_result_path,
+            eval_result_output_path,
+        )
+        if not cp_out_result.succeeded:
+            return EvaluationOutcome(
+                succeeded=False,
+                result_path=None,
+                trajectory_path=str(trajectory_output_path),
+                error=cp_out_result.render(),
+            )
+
+        result_json = json.loads(eval_result_output_path.read_text(encoding="utf-8"))
+        return EvaluationOutcome(
+            succeeded=True,
+            result_path=str(eval_result_output_path),
+            trajectory_path=str(trajectory_output_path),
+            result_json=result_json,
+        )
+    except Exception as exc:
+        return EvaluationOutcome(
+            succeeded=False,
+            result_path=None,
+            trajectory_path=str(trajectory_output_path),
+            error=str(exc),
+        )
 
 
 def _describe_failed_container(task: ManagedTask) -> tuple[bool, bool]:
@@ -634,6 +868,7 @@ async def run_managed_task(
     max_cycles: int,
     cycle_sleep_seconds: float,
     server_hostname: str,
+    evaluator_config: EvaluatorConfig,
     init_timeout_seconds: int,
     phase_callback: Callable[[str], None] | None = None,
 ) -> ManagedTaskOutcome:
@@ -681,6 +916,7 @@ async def run_managed_task(
         init_result = _run_init_in_container(
             container_name=task.slug,
             server_hostname=server_hostname,
+            evaluator_config=evaluator_config,
             timeout_seconds=init_timeout_seconds,
             line_callback=init_callback,
         )
@@ -736,19 +972,69 @@ async def run_managed_task(
             cycle_sleep_seconds=cycle_sleep_seconds,
         )
 
-        achieved = run_summary.desire_status == "achieved"
+        emit("running_evaluator")
+        structured_log_path = (
+            Path(structured_log_file_path) if structured_log_file_path else None
+        )
+        trajectory_path = (
+            structured_log_path.with_suffix(".trajectory.txt")
+            if structured_log_path is not None
+            else Path(tempfile.gettempdir()) / f"{task.slug}.trajectory.txt"
+        )
+        eval_result_path = (
+            structured_log_path.with_suffix(".eval.json")
+            if structured_log_path is not None
+            else Path(tempfile.gettempdir()) / f"{task.slug}.eval.json"
+        )
+        evaluation = run_evaluator_for_task(
+            container_name=task.slug,
+            server_hostname=server_hostname,
+            evaluator_config=evaluator_config,
+            structured_log_path=structured_log_path,
+            trajectory_output_path=trajectory_path,
+            eval_result_output_path=eval_result_path,
+        )
+        if not evaluation.succeeded:
+            container_preserved, container_running = _describe_failed_container(task)
+            error_parts = [
+                "Task evaluation failed.",
+                evaluation.error or "Unknown evaluator failure.",
+                f"Final desire status: {run_summary.desire_status or 'unknown'}",
+            ]
+            return ManagedTaskOutcome(
+                task=task,
+                achieved=False,
+                error="\n".join(error_parts),
+                desire_status=run_summary.desire_status,
+                failure_phase=current_phase,
+                container_preserved=container_preserved,
+                container_running=container_running,
+                evaluation_result_path=evaluation.result_path,
+            )
+
+        score = (
+            _score_from_result_json(evaluation.result_json or {})
+            if evaluation.result_json is not None
+            else None
+        )
+        achieved = score is not None and score[0] >= score[1]
+
         if achieved:
             task_achieved = True
             return ManagedTaskOutcome(
                 task=task,
                 achieved=True,
                 desire_status=run_summary.desire_status,
+                evaluation_result_path=evaluation.result_path,
             )
 
-        error = (
-            f"Task did not reach achieved state. Final desire status: "
-            f"{run_summary.desire_status or 'unknown'}"
-        )
+        if score is None:
+            error = "Task evaluation completed but result format was missing checkpoints."
+        else:
+            error = (
+                f"Task did not pass evaluator. Score: {score[0]:g}/{score[1]:g}. "
+                f"Final desire status: {run_summary.desire_status or 'unknown'}"
+            )
         container_preserved, container_running = _describe_failed_container(task)
         return ManagedTaskOutcome(
             task=task,
@@ -758,6 +1044,7 @@ async def run_managed_task(
             failure_phase=current_phase,
             container_preserved=container_preserved,
             container_running=container_running,
+            evaluation_result_path=evaluation.result_path,
         )
     except Exception as exc:
         container_preserved = container_started and _docker_container_exists(task.slug)
@@ -791,9 +1078,65 @@ def _next_missing_snapshot(
     ]
 
 
+def _next_unevaluated_snapshot(
+    *,
+    tasks: Sequence[ManagedTask],
+    state: BatchState,
+) -> list[ManagedTask]:
+    task_by_slug = _task_mapping(tasks)
+    executed_set = set(state.executed_tasks)
+    evaluated_set = set(state.evaluated_tasks)
+    return [
+        task_by_slug[slug]
+        for slug in state.executed_tasks
+        if slug in task_by_slug and slug in executed_set and slug not in evaluated_set
+    ]
+
+
+def evaluate_existing_task(
+    *,
+    task: ManagedTask,
+    structured_log_dir: Path,
+    server_hostname: str,
+    evaluator_config: EvaluatorConfig,
+) -> EvaluationOutcome:
+    structured_log_path = _structured_log_path_for_task(structured_log_dir, task)
+    if not structured_log_path.exists():
+        return EvaluationOutcome(
+            succeeded=False,
+            result_path=None,
+            trajectory_path=None,
+            error=f"Structured log not found: {structured_log_path}",
+        )
+
+    if not _docker_container_exists(task.slug):
+        return EvaluationOutcome(
+            succeeded=False,
+            result_path=None,
+            trajectory_path=None,
+            error=f"Container '{task.slug}' does not exist.",
+        )
+
+    started_for_eval = False
+    try:
+        started_for_eval = _start_container_if_stopped(task.slug)
+        return run_evaluator_for_task(
+            container_name=task.slug,
+            server_hostname=server_hostname,
+            evaluator_config=evaluator_config,
+            structured_log_path=structured_log_path,
+            trajectory_output_path=_trajectory_path_for_log(structured_log_path),
+            eval_result_output_path=_eval_result_path_for_log(structured_log_path),
+        )
+    finally:
+        if started_for_eval and _docker_container_exists(task.slug):
+            _stop_container_if_running(task.slug)
+
+
 async def run_batch(args: argparse.Namespace) -> int:
     tasks_file = Path(args.tasks_file)
     tasks = load_managed_tasks(tasks_file)
+    task_by_slug = _task_mapping(tasks)
     state_file = Path(args.state_file)
     structured_log_dir = Path(args.structured_log_dir)
     structured_log_dir.mkdir(parents=True, exist_ok=True)
@@ -803,6 +1146,87 @@ async def run_batch(args: argparse.Namespace) -> int:
         tasks_file=tasks_file,
         tasks=tasks,
     )
+
+    evaluator_config = EvaluatorConfig(
+        api_key=args.eval_api_key,
+        base_url=args.eval_base_url,
+        model=args.eval_model,
+    )
+
+    if args.eval_only:
+        if args.eval_task:
+            if args.eval_task not in task_by_slug:
+                raise RuntimeError(
+                    f"Task slug '{args.eval_task}' not found in {tasks_file}."
+                )
+            if args.eval_task not in set(state.executed_tasks):
+                raise RuntimeError(
+                    f"Task slug '{args.eval_task}' is not in executed_tasks, so there is no completed run to evaluate."
+                )
+            pending_tasks = [task_by_slug[args.eval_task]]
+        else:
+            pending_tasks = _next_unevaluated_snapshot(tasks=tasks, state=state)
+        print(f"Batch state file: {state_file}")
+        print(f"Unevaluated completed tasks this pass: {len(pending_tasks)}")
+
+        for index, task in enumerate(pending_tasks, start=1):
+            print(f"\n[{index}/{len(pending_tasks)}] Evaluating {task.slug}")
+            update_batch_state(
+                state,
+                state_file,
+                current_task=task.slug,
+                current_phase="running_evaluator",
+                last_error=None,
+            )
+
+            evaluation = evaluate_existing_task(
+                task=task,
+                structured_log_dir=structured_log_dir,
+                server_hostname=args.server_hostname,
+                evaluator_config=evaluator_config,
+            )
+            if evaluation.succeeded:
+                evaluated_tasks = list(state.evaluated_tasks)
+                if task.slug not in evaluated_tasks:
+                    evaluated_tasks.append(task.slug)
+                update_batch_state(
+                    state,
+                    state_file,
+                    current_task=task.slug,
+                    current_phase="evaluated",
+                    evaluated_tasks=evaluated_tasks,
+                    last_error=None,
+                )
+                score = (
+                    _score_from_result_json(evaluation.result_json or {})
+                    if evaluation.result_json is not None
+                    else None
+                )
+                if score is not None:
+                    print(f"[{task.slug}] evaluation score: {score[0]:g}/{score[1]:g}")
+                continue
+
+            update_batch_state(
+                state,
+                state_file,
+                current_task=task.slug,
+                current_phase="evaluation_failed",
+                last_error=evaluation.error,
+            )
+            _print_prefixed_output(task, "", evaluation.error or "Evaluation failed.")
+
+        update_batch_state(
+            state,
+            state_file,
+            current_task=None,
+            current_phase="completed",
+            last_error=state.last_error,
+        )
+        print(f"evaluated tasks: {state.evaluated_tasks}")
+        unevaluated = [slug for slug in state.executed_tasks if slug not in state.evaluated_tasks]
+        print(f"unevaluated executed tasks: {unevaluated}")
+        return 0 if not unevaluated else 1
+
     pending_tasks = _next_missing_snapshot(tasks=tasks, state=state)
 
     print(f"Batch state file: {state_file}")
@@ -834,6 +1258,7 @@ async def run_batch(args: argparse.Namespace) -> int:
                 max_cycles=args.max_cycles,
                 cycle_sleep_seconds=args.cycle_sleep,
                 server_hostname=args.server_hostname,
+                evaluator_config=evaluator_config,
                 init_timeout_seconds=args.init_timeout,
                 phase_callback=lambda phase, task_slug=task.slug: update_batch_state(
                     state,
@@ -850,6 +1275,9 @@ async def run_batch(args: argparse.Namespace) -> int:
             executed_tasks = list(state.executed_tasks)
             if task.slug not in executed_tasks:
                 executed_tasks.append(task.slug)
+            evaluated_tasks = list(state.evaluated_tasks)
+            if task.slug not in evaluated_tasks:
+                evaluated_tasks.append(task.slug)
             missing_tasks = [slug for slug in state.missing_tasks if slug != task.slug]
             update_batch_state(
                 state,
@@ -857,6 +1285,7 @@ async def run_batch(args: argparse.Namespace) -> int:
                 current_task=task.slug,
                 current_phase="achieved",
                 executed_tasks=executed_tasks,
+                evaluated_tasks=evaluated_tasks,
                 missing_tasks=missing_tasks,
                 last_error=None,
             )
@@ -880,6 +1309,7 @@ async def run_batch(args: argparse.Namespace) -> int:
     )
 
     print(f"executed tasks: {state.executed_tasks}")
+    print(f"evaluated tasks: {state.evaluated_tasks}")
     print(f"missing tasks: {state.missing_tasks}")
     return 0 if not state.missing_tasks else 1
 
@@ -906,6 +1336,11 @@ async def run_managed_single_task(args: argparse.Namespace) -> int:
             max_cycles=args.max_cycles,
             cycle_sleep_seconds=args.cycle_sleep,
             server_hostname=args.server_hostname,
+            evaluator_config=EvaluatorConfig(
+                api_key=args.eval_api_key,
+                base_url=args.eval_base_url,
+                model=args.eval_model,
+            ),
             init_timeout_seconds=args.init_timeout,
         )
     except Exception as exc:
@@ -940,7 +1375,47 @@ async def run_manual_container(args: argparse.Namespace) -> int:
     summary = await run_cycles(
         agent, max_cycles=args.max_cycles, cycle_sleep_seconds=args.cycle_sleep
     )
-    return 0 if summary.desire_status == "achieved" else 1
+
+    structured_log_path = Path(args.structured_log_file) if args.structured_log_file else None
+    trajectory_path = (
+        structured_log_path.with_suffix(".trajectory.txt")
+        if structured_log_path is not None
+        else Path(tempfile.gettempdir()) / f"{args.container}.trajectory.txt"
+    )
+    eval_result_path = (
+        structured_log_path.with_suffix(".eval.json")
+        if structured_log_path is not None
+        else Path(tempfile.gettempdir()) / f"{args.container}.eval.json"
+    )
+    evaluation = run_evaluator_for_task(
+        container_name=args.container,
+        server_hostname=args.server_hostname,
+        evaluator_config=EvaluatorConfig(
+            api_key=args.eval_api_key,
+            base_url=args.eval_base_url,
+            model=args.eval_model,
+        ),
+        structured_log_path=structured_log_path,
+        trajectory_output_path=trajectory_path,
+        eval_result_output_path=eval_result_path,
+    )
+    if not evaluation.succeeded:
+        raise RuntimeError(f"Evaluation failed for container '{args.container}'.\n{evaluation.error}")
+
+    score = (
+        _score_from_result_json(evaluation.result_json or {})
+        if evaluation.result_json is not None
+        else None
+    )
+    if score is None:
+        raise RuntimeError(
+            f"Evaluation result for container '{args.container}' did not contain checkpoints."
+        )
+
+    print(f"Evaluation result path: {evaluation.result_path}")
+    print(f"Trajectory path: {evaluation.trajectory_path}")
+    print(f"Evaluation score: {score[0]:g}/{score[1]:g}")
+    return 0 if score[0] >= score[1] else 1
 
 
 def parse_args() -> argparse.Namespace:
@@ -957,6 +1432,16 @@ def parse_args() -> argparse.Namespace:
         "--tasks-file",
         default=None,
         help="Run all task images from a file with resumable state",
+    )
+    parser.add_argument(
+        "--eval-only",
+        action="store_true",
+        help="In batch mode, run evaluator only for already executed but unevaluated tasks",
+    )
+    parser.add_argument(
+        "--eval-task",
+        default=None,
+        help="With --eval-only and --tasks-file, evaluate only the specified executed task slug",
     )
     parser.add_argument("--model", default="gpt-5.3-codex", help="Model name")
     parser.add_argument(
@@ -1005,6 +1490,21 @@ def parse_args() -> argparse.Namespace:
         default=600,
         help="Seconds to wait for /utils/init.sh to complete",
     )
+    parser.add_argument(
+        "--eval-api-key",
+        default="sk-1234",
+        help="LITELLM_API_KEY passed to TAC init and evaluator",
+    )
+    parser.add_argument(
+        "--eval-base-url",
+        default="http://0.0.0.0:4000",
+        help="LITELLM_BASE_URL passed to TAC init and evaluator",
+    )
+    parser.add_argument(
+        "--eval-model",
+        default="chatgpt/gpt-5.4-mini",
+        help="LITELLM_MODEL passed to TAC init and evaluator",
+    )
 
     args = parser.parse_args()
 
@@ -1014,6 +1514,10 @@ def parse_args() -> argparse.Namespace:
         parser.error(
             "--structured-log-file is only supported for manual or --task-image runs."
         )
+    if args.eval_only and not args.tasks_file:
+        parser.error("--eval-only requires --tasks-file.")
+    if args.eval_task and not args.eval_only:
+        parser.error("--eval-task requires --eval-only.")
     return args
 
 
