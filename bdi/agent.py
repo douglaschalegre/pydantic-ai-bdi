@@ -7,6 +7,7 @@ beliefs, desires, intentions, planning, execution, monitoring, and human-in-the-
 from collections import deque
 from collections.abc import Sequence
 import json
+from pathlib import Path
 from typing import Any, Generic, List, Optional, TypeVar, overload
 
 from pydantic_ai import Agent, models, usage as _usage
@@ -155,6 +156,7 @@ class BDI(Agent, Generic[T]):
         log_path = self.log_file_path
 
         try:
+            Path(log_path).parent.mkdir(parents=True, exist_ok=True)
             # Truncate file and mirror terminal output into it.
             with open(log_path, "w", encoding="utf-8"):
                 pass
@@ -177,6 +179,7 @@ class BDI(Agent, Generic[T]):
             return
 
         try:
+            Path(self.structured_log_file_path).parent.mkdir(parents=True, exist_ok=True)
             self._structured_log_entries = []
             with open(self.structured_log_file_path, "w", encoding="utf-8") as f:
                 json.dump(self._structured_log_entries, f, ensure_ascii=False, indent=2)
