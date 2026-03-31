@@ -1,0 +1,709 @@
+{
+  "tasks_file": "theagentcompany/tac-tasks.md",
+  "updated_at": "2026-03-24T12:59:13+00:00",
+  "current_task": "admin-ask-for-meeting-feedback",
+  "current_phase": "running_agent",
+  "task_statuses": {
+    "admin-arrange-meeting-rooms": {
+      "executed": true,
+      "evaluated": true
+    },
+    "admin-ask-for-meeting-feedback": {
+      "executed": false,
+      "evaluated": false
+    },
+    "admin-ask-for-upgrade-reimbursement": {
+      "executed": false,
+      "evaluated": false
+    },
+    "admin-check-employees-budget-and-reply": {
+      "executed": false,
+      "evaluated": false
+    },
+    "admin-check-employees-budget-and-reply-2": {
+      "executed": false,
+      "evaluated": false
+    },
+    "admin-check-employees-budget-and-reply-and-record": {
+      "executed": false,
+      "evaluated": false
+    },
+    "admin-collect-requests-and-compute-total-price": {
+      "executed": false,
+      "evaluated": false
+    },
+    "admin-employee-info-reconciliation": {
+      "executed": false,
+      "evaluated": false
+    },
+    "admin-get-best-vendor-quote": {
+      "executed": false,
+      "evaluated": false
+    },
+    "admin-make-spreadsheet": {
+      "executed": false,
+      "evaluated": false
+    },
+    "admin-mass-forms-filling": {
+      "executed": false,
+      "evaluated": false
+    },
+    "admin-read-survey-and-summarise": {
+      "executed": false,
+      "evaluated": false
+    },
+    "admin-remove-pages-pdf": {
+      "executed": false,
+      "evaluated": false
+    },
+    "admin-translate-sales-chat": {
+      "executed": false,
+      "evaluated": false
+    },
+    "admin-watch-video": {
+      "executed": false,
+      "evaluated": false
+    },
+    "bm-classify-nationality": {
+      "executed": false,
+      "evaluated": false
+    },
+    "ds-answer-numerical-data-question": {
+      "executed": false,
+      "evaluated": false
+    },
+    "ds-answer-spreadsheet-questions": {
+      "executed": false,
+      "evaluated": false
+    },
+    "ds-calculate-spreadsheet-stats": {
+      "executed": false,
+      "evaluated": false
+    },
+    "ds-coffee-shop-database-management": {
+      "executed": false,
+      "evaluated": false
+    },
+    "ds-find-meeting-spreadsheet": {
+      "executed": false,
+      "evaluated": false
+    },
+    "ds-fix-table-values-and-missing-answers": {
+      "executed": false,
+      "evaluated": false
+    },
+    "ds-format-excel-sheets": {
+      "executed": false,
+      "evaluated": false
+    },
+    "ds-janusgraph-exercise": {
+      "executed": false,
+      "evaluated": false
+    },
+    "ds-merge-multiple-sheets": {
+      "executed": false,
+      "evaluated": false
+    },
+    "ds-organise-report-sus-data": {
+      "executed": false,
+      "evaluated": false
+    },
+    "ds-predictive-modeling": {
+      "executed": false,
+      "evaluated": false
+    },
+    "ds-sql-exercise": {
+      "executed": false,
+      "evaluated": false
+    },
+    "ds-stock-analysis-slides": {
+      "executed": false,
+      "evaluated": false
+    },
+    "ds-visualize-data-in-pie-and-bar-chart": {
+      "executed": false,
+      "evaluated": false
+    },
+    "example": {
+      "executed": false,
+      "evaluated": false
+    },
+    "finance-apply-tax-credit": {
+      "executed": false,
+      "evaluated": false
+    },
+    "finance-budget-variance": {
+      "executed": false,
+      "evaluated": false
+    },
+    "finance-check-attendance-payroll": {
+      "executed": false,
+      "evaluated": false
+    },
+    "finance-create-10k-income-report": {
+      "executed": false,
+      "evaluated": false
+    },
+    "finance-expense-validation": {
+      "executed": false,
+      "evaluated": false
+    },
+    "finance-find-signatories": {
+      "executed": false,
+      "evaluated": false
+    },
+    "finance-invoice-matching": {
+      "executed": false,
+      "evaluated": false
+    },
+    "finance-nonqualified-bill-ask-for-reimburse": {
+      "executed": false,
+      "evaluated": false
+    },
+    "finance-qualified-bill-ask-for-reimburse": {
+      "executed": false,
+      "evaluated": false
+    },
+    "finance-r-d-activities": {
+      "executed": false,
+      "evaluated": false
+    },
+    "finance-revenue-reconciliation": {
+      "executed": false,
+      "evaluated": false
+    },
+    "finance-substantial-presence-test": {
+      "executed": false,
+      "evaluated": false
+    },
+    "hr-analyze-outing-bills": {
+      "executed": false,
+      "evaluated": false
+    },
+    "hr-check-attendance-multiple-days": {
+      "executed": false,
+      "evaluated": false
+    },
+    "hr-check-attendance-multiple-days-department": {
+      "executed": false,
+      "evaluated": false
+    },
+    "hr-check-attendance-multiple-days-department-with-chat": {
+      "executed": false,
+      "evaluated": false
+    },
+    "hr-check-attendance-one-day": {
+      "executed": false,
+      "evaluated": false
+    },
+    "hr-check-for-invalid-passwords-and-ask-for-valid-passwords": {
+      "executed": false,
+      "evaluated": false
+    },
+    "hr-collect-feedbacks": {
+      "executed": false,
+      "evaluated": false
+    },
+    "hr-collect-multiple-valid-passwords": {
+      "executed": false,
+      "evaluated": false
+    },
+    "hr-create-career-ladder": {
+      "executed": false,
+      "evaluated": false
+    },
+    "hr-create-employee-manual": {
+      "executed": false,
+      "evaluated": false
+    },
+    "hr-delete-and-insert-user": {
+      "executed": false,
+      "evaluated": false
+    },
+    "hr-get-valid-password": {
+      "executed": false,
+      "evaluated": false
+    },
+    "hr-green-card-consultation": {
+      "executed": false,
+      "evaluated": false
+    },
+    "hr-internal-tooling-slides": {
+      "executed": false,
+      "evaluated": false
+    },
+    "hr-make-slides-introduce-leadership": {
+      "executed": false,
+      "evaluated": false
+    },
+    "hr-mass-survey": {
+      "executed": false,
+      "evaluated": false
+    },
+    "hr-massive-resume-screening": {
+      "executed": false,
+      "evaluated": false
+    },
+    "hr-new-grad-job-description": {
+      "executed": false,
+      "evaluated": false
+    },
+    "hr-new-grad-job-description-2": {
+      "executed": false,
+      "evaluated": false
+    },
+    "hr-new-grad-job-description-3": {
+      "executed": false,
+      "evaluated": false
+    },
+    "hr-organize-talent-info": {
+      "executed": false,
+      "evaluated": false
+    },
+    "hr-pick-interviewer-1": {
+      "executed": false,
+      "evaluated": false
+    },
+    "hr-pick-interviewer-2": {
+      "executed": false,
+      "evaluated": false
+    },
+    "hr-pick-interviewer-3": {
+      "executed": false,
+      "evaluated": false
+    },
+    "hr-populate-salary-increase-memo": {
+      "executed": false,
+      "evaluated": false
+    },
+    "hr-resume-categorization": {
+      "executed": false,
+      "evaluated": false
+    },
+    "hr-resume-screening": {
+      "executed": false,
+      "evaluated": false
+    },
+    "hr-salary-analysis": {
+      "executed": false,
+      "evaluated": false
+    },
+    "hr-transfer-group": {
+      "executed": false,
+      "evaluated": false
+    },
+    "ml-generate-gradcam": {
+      "executed": false,
+      "evaluated": false
+    },
+    "ml-grade-exam": {
+      "executed": false,
+      "evaluated": false
+    },
+    "pm-add-new-moderator": {
+      "executed": false,
+      "evaluated": false
+    },
+    "pm-ask-for-issue-and-create-in-gitlab": {
+      "executed": false,
+      "evaluated": false
+    },
+    "pm-ask-issue-assignee-for-issue-status-and-update-in-plane": {
+      "executed": false,
+      "evaluated": false
+    },
+    "pm-assign-issues": {
+      "executed": false,
+      "evaluated": false
+    },
+    "pm-change-channel-ownership": {
+      "executed": false,
+      "evaluated": false
+    },
+    "pm-check-backlog-update-issues": {
+      "executed": false,
+      "evaluated": false
+    },
+    "pm-copy-plane-issues-to-gitlab": {
+      "executed": false,
+      "evaluated": false
+    },
+    "pm-create-channel-message": {
+      "executed": false,
+      "evaluated": false
+    },
+    "pm-create-channel-message-medium": {
+      "executed": false,
+      "evaluated": false
+    },
+    "pm-create-channel-new-leader": {
+      "executed": false,
+      "evaluated": false
+    },
+    "pm-create-plane-issue": {
+      "executed": false,
+      "evaluated": false
+    },
+    "pm-create-teammate-channel-from-spreadsheet": {
+      "executed": false,
+      "evaluated": false
+    },
+    "pm-distribute-information": {
+      "executed": false,
+      "evaluated": false
+    },
+    "pm-monitor-new-bug-issues": {
+      "executed": false,
+      "evaluated": false
+    },
+    "pm-monthly-attendance-slides": {
+      "executed": false,
+      "evaluated": false
+    },
+    "pm-plan-personnel-for-new-project": {
+      "executed": false,
+      "evaluated": false
+    },
+    "pm-prepare-meeting-with-customers": {
+      "executed": false,
+      "evaluated": false
+    },
+    "pm-present-engineer-group-members": {
+      "executed": false,
+      "evaluated": false
+    },
+    "pm-present-gitlab-info-as-ppt": {
+      "executed": false,
+      "evaluated": false
+    },
+    "pm-projects-analytics": {
+      "executed": false,
+      "evaluated": false
+    },
+    "pm-schedule-meeting-1": {
+      "executed": false,
+      "evaluated": false
+    },
+    "pm-schedule-meeting-2": {
+      "executed": false,
+      "evaluated": false
+    },
+    "pm-send-hello-message": {
+      "executed": false,
+      "evaluated": false
+    },
+    "pm-send-notification-to-corresponding-user": {
+      "executed": false,
+      "evaluated": false
+    },
+    "pm-update-gitlab-issue-from-plane-status": {
+      "executed": false,
+      "evaluated": false
+    },
+    "pm-update-plane-issue-from-gitlab-status": {
+      "executed": false,
+      "evaluated": false
+    },
+    "pm-update-project-milestones": {
+      "executed": false,
+      "evaluated": false
+    },
+    "pm-update-sprint-cycles": {
+      "executed": false,
+      "evaluated": false
+    },
+    "qa-escalate-emergency": {
+      "executed": false,
+      "evaluated": false
+    },
+    "qa-update-issue-status-according-to-colleagues": {
+      "executed": false,
+      "evaluated": false
+    },
+    "research-answer-questions-on-paper": {
+      "executed": false,
+      "evaluated": false
+    },
+    "research-reproduce-figures": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-add-all-repos-to-docs": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-add-one-gitlab-pipeline": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-add-wiki-page": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-change-branch-policy": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-change-license-easy": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-change-license-hard": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-check-and-run-unit-test": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-check-high-priority-issue": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-close-all-gitlab-issues": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-close-all-issue-on-all-project-under-tac-workspace": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-close-all-prs": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-close-an-issue": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-collect-open-issues": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-copilot-arena-server-easy-add-suffix": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-copilot-arena-server-new-endpoint": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-copilot-arena-server-setup": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-copy-issues-to-plane": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-copy-table-from-pdf-to-xlsx": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-create-commit-table-for-all-gitlab-users": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-create-new-characters": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-create-new-gitlab-project-logo": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-create-new-release": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-create-new-repo": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-create-sqlite-database": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-debug-crashed-server": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-delete-all-project-under-plane": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-delete-all-repos": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-delete-stale-branch": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-dependency-change-1": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-find-answer-in-codebase-1": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-find-answer-in-codebase-2": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-find-answer-in-codebase-3": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-find-api": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-fix-factual-mistake": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-fix-rising-wave-datatype": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-implement-buffer-pool-manager-bustub": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-implement-covering-index-in-janusgraph": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-implement-hyperloglog": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-implement-raft-in-go": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-install-go": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-install-openjdk": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-issue-label-management": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-migrate-package-manager": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-milestone-meeting": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-move-bustub-wiki": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-move-page-to-cloud": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-pitch-idea-to-manager": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-reply-community-issue-by-asking-npc": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-reply-community-issue-with-fixed-reply": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-repo_profile_pic": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-report-agent-repos": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-report-unit-test-coverage-to-plane": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-run-all-unit-test": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-run-janusgraph": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-run-linter-on-openhands": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-run-rising-wave-locally": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-sotopia-create-agent": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-sotopia-create-agent-wo-repo": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-sotopia-dev-container": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-sotopia-update-ci": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-summarize-recent-issues": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-sync-from-origin-repo": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-troubleshoot-dev-setup": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-update-dev-document": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-update-issue-status-on-plane": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-update-readme": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-write-a-unit-test-for-append_file-function": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-write-a-unit-test-for-scroll_down-function": {
+      "executed": false,
+      "evaluated": false
+    },
+    "sde-write-a-unit-test-for-search_file-function": {
+      "executed": false,
+      "evaluated": false
+    }
+  },
+  "last_error": null
+}
