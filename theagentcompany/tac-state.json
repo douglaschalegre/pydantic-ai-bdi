@@ -1,8 +1,8 @@
 {
   "tasks_file": "theagentcompany/tac-tasks.md",
-  "updated_at": "2026-03-24T12:59:13+00:00",
-  "current_task": "admin-ask-for-meeting-feedback",
-  "current_phase": "running_agent",
+  "updated_at": "2026-03-31T20:27:38+00:00",
+  "current_task": "sde-copy-issues-to-plane",
+  "current_phase": "starting_container",
   "task_statuses": {
     "sde-copy-issues-to-plane": {
       "executed": false,
