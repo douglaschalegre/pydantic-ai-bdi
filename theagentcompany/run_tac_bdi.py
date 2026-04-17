@@ -26,6 +26,7 @@ from pydantic_ai.mcp import MCPServerStdio
 
 
 READY_MARKER = "All services are ready!"
+NO_DEPENDENCIES_MARKER = "No matching services found in dependencies.yml"
 DECRYPTION_KEY = "theagentcompany is all you need"
 DEFAULT_TASKS_FILE = Path(__file__).with_name("tac-tasks.md")
 DEFAULT_LOG_FILE = Path(__file__).with_name("tac_bdi_agent.log")
@@ -727,6 +728,62 @@ def _tail_text(text: str, max_lines: int = 40) -> str:
     return "\n".join(lines[-max_lines:])
 
 
+def _clip_text(text: str, *, head_lines: int = 3, tail_lines: int = 12) -> str:
+    lines = text.splitlines()
+    visible_lines = head_lines + tail_lines + 1
+    if len(lines) <= visible_lines:
+        return "\n".join(lines)
+    omitted = len(lines) - head_lines - tail_lines
+    clipped = list(lines[:head_lines])
+    clipped.append(f"... ({omitted} lines omitted) ...")
+    clipped.extend(lines[-tail_lines:])
+    return "\n".join(clipped)
+
+
+def _format_command_result_failure(result: CommandResult) -> str:
+    lines = [
+        f"Command failed with exit code {result.returncode}.",
+        f"Command: {' '.join(result.cmd)}",
+    ]
+
+    if result.returncode == 124:
+        lines.append("Command hit the configured timeout.")
+
+    stdout_text = _normalize_optional_string(result.stdout)
+    stderr_text = _normalize_optional_string(result.stderr)
+
+    if stdout_text:
+        lines.append("[stdout]")
+        lines.extend(_clip_text(stdout_text, head_lines=3, tail_lines=12).splitlines())
+
+    if stderr_text:
+        lines.append("[stderr]")
+        lines.extend(_clip_text(stderr_text, head_lines=3, tail_lines=12).splitlines())
+
+    if not stdout_text and not stderr_text:
+        lines.append("(no output)")
+
+    return "\n".join(lines)
+
+
+def _format_init_failure(result: CommandResult, *, timeout_seconds: int) -> str:
+    lines = [f"Init timeout: {timeout_seconds} seconds."]
+
+    readiness_marker = None
+    for marker in (READY_MARKER, NO_DEPENDENCIES_MARKER):
+        if marker in result.stdout:
+            readiness_marker = marker
+            break
+
+    if readiness_marker is not None:
+        lines.append(
+            f"Observed readiness marker in stdout before failure: {readiness_marker}"
+        )
+
+    lines.append(_format_command_result_failure(result))
+    return "\n".join(lines)
+
+
 def _is_usage_limit_error(text: str | None) -> bool:
     if not text:
         return False
@@ -1044,7 +1101,7 @@ async def run_managed_task(
                 error=_format_startup_failure(
                     task=task,
                     phase=current_phase or "starting_container",
-                    error=start_result.render(),
+                    error=_format_command_result_failure(start_result),
                     container_preserved=False,
                     container_running=False,
                 ),
@@ -1075,7 +1132,9 @@ async def run_managed_task(
                 error=_format_startup_failure(
                     task=task,
                     phase=current_phase or "running_init",
-                    error=init_result.render(),
+                    error=_format_init_failure(
+                        init_result, timeout_seconds=init_timeout_seconds
+                    ),
                     container_preserved=container_preserved,
                     container_running=container_running,
                 ),
@@ -1083,7 +1142,10 @@ async def run_managed_task(
                 container_preserved=container_preserved,
                 container_running=container_running,
             )
-        if READY_MARKER not in init_result.output:
+        if (
+            READY_MARKER not in init_result.output
+            and NO_DEPENDENCIES_MARKER not in init_result.output
+        ):
             container_preserved, container_running = _describe_failed_container(task)
             return ManagedTaskOutcome(
                 task=task,
@@ -1094,8 +1156,9 @@ async def run_managed_task(
                     task=task,
                     phase=current_phase or "running_init",
                     error=(
-                        "Init completed without readiness marker "
-                        f"'{READY_MARKER}'.\nOutput:\n{init_result.output or '(no output)'}"
+                        "Init completed without a readiness signal. Expected "
+                        f"'{READY_MARKER}' or '{NO_DEPENDENCIES_MARKER}'.\n"
+                        f"Output:\n{init_result.output or '(no output)'}"
                     ),
                     container_preserved=container_preserved,
                     container_running=container_running,
@@ -1725,7 +1788,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--server-hostname",
-        default="192.168.0.6",
+        default="100.117.17.12",
         help="SERVER_HOSTNAME used for /utils/init.sh",
     )
     parser.add_argument(
