@@ -1,45 +1,33 @@
 {
   "tasks_file": "theagentcompany/tac-tasks.md",
-  "updated_at": "2026-03-31T20:27:38+00:00",
-  "current_task": "sde-copy-issues-to-plane",
-  "current_phase": "starting_container",
+  "updated_at": "2026-04-17T12:15:26+00:00",
+  "current_task": null,
+  "current_phase": "completed",
   "task_statuses": {
-    "sde-copy-issues-to-plane": {
+    "pm-create-channel-message": {
       "executed": false,
       "evaluated": false
     },
     "sde-install-openjdk": {
-      "executed": false,
-      "evaluated": false
+      "executed": true,
+      "evaluated": true
     },
     "pm-change-channel-ownership": {
-      "executed": false,
-      "evaluated": false
+      "executed": true,
+      "evaluated": true
     },
     "pm-schedule-meeting-2": {
-      "executed": false,
-      "evaluated": false
+      "executed": true,
+      "evaluated": true
     },
     "sde-update-issue-status-on-plane": {
-      "executed": false,
-      "evaluated": false
-    },
-    "pm-ask-issue-assignee-for-issue-status-and-update-in-plane": {
-      "executed": false,
-      "evaluated": false
+      "executed": true,
+      "evaluated": true
     },
     "hr-create-employee-manual": {
-      "executed": false,
-      "evaluated": false
-    },
-    "sde-troubleshoot-dev-setup": {
-      "executed": false,
-      "evaluated": false
-    },
-    "admin-read-survey-and-summarise": {
-      "executed": false,
-      "evaluated": false
+      "executed": true,
+      "evaluated": true
     }
   },
-  "last_error": null
+  "last_error": "failed during running_init\ncontainer 'pm-create-channel-message' is still running for inspection\nfailure details:\n  Waiting 5 seconds before next check...\n  Service rocketchat healthcheck status: 400\n  Service rocketchat not ready yet (attempt 174)...\n  Waiting 5 seconds before next check...\n  Service rocketchat healthcheck status: 400\n  Service rocketchat not ready yet (attempt 175)...\n  Waiting 5 seconds before next check...\n  Service rocketchat healthcheck status: 400\n  Service rocketchat not ready yet (attempt 176)...\n  Waiting 5 seconds before next check...\n  Service rocketchat healthcheck status: 400\n  Service rocketchat not ready yet (attempt 177)...\n  Waiting 5 seconds before next check...\n  Service rocketchat healthcheck status: 400\n  Service rocketchat not ready yet (attempt 178)...\n  Waiting 5 seconds before next check...\n  Service rocketchat healthcheck status: 400\n  Service rocketchat not ready yet (attempt 179)...\n  Waiting 5 seconds before next check...\n  Service rocketchat healthcheck status: 400\n  Service rocketchat not ready yet (attempt 180)...\n  Waiting 5 seconds before next check...\n  Error: Timeout waiting for services to be ready\n  \n  [stderr]\n  Timed out after 600 seconds.\n    % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\n                                   Dload  Upload   Total   Spent    Left  Speed\n  \n    0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0\n    0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0\n    0     0    0     0    0     0      0      0 --:--:--  0:00:01 --:--:--     0\n    0     0    0     0    0     0      0      0 --:--:--  0:00:02 --:--:--     0\n    0     0    0     0    0     0      0      0 --:--:--  0:00:03 --:--:--     0\n    0     0    0     0    0     0      0      0 --:--:--  0:00:04 --:--:--     0\n    0     0    0     0    0     0      0      0 --:--:--  0:00:05 --:--:--     0\n    0     0    0     0    0     0      0      0 --:--:--  0:00:06 --:--:--     0\n    0     0    0     0    0     0      0      0 --:--:--  0:00:07 --:--:--     0\n  100    49  100    49    0     0      6      0  0:00:08  0:00:08 --:--:--    10\n  100    49  100    49    0     0      6      0  0:00:08  0:00:08 --:--:--    12"
 }
