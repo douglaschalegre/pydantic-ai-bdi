@@ -19,7 +19,7 @@ provider = CodexProvider()
 # - "gpt-5-codex"
 # - "codex-mini-latest"
 model = CodexModel(
-    "gpt-5.3-codex",
+    "gpt-5.5",
     provider=provider,
 )
 
