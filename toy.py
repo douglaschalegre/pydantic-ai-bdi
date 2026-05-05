@@ -12,7 +12,7 @@ load_dotenv()
 provider = CodexProvider()
 
 # Choose your Codex model. Examples:
-# - "gpt-5.5-codex"
+# - "gpt-5.5"
 # - "gpt-5.3-codex" (default)
 # - "gpt-5.2-codex"
 # - "gpt-5.1-codex"
