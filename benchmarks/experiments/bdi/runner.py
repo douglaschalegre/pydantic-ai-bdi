@@ -16,6 +16,7 @@ from pydantic_ai.mcp import MCPServerStdio
 
 from antigravity import AntigravityModel, AntigravityProvider
 from bdi.agent import BDI
+from bdi.cycle import is_final_cycle_status
 from benchmarks.experiments.base_experiment import ExperimentMetrics, MetricCollector
 from benchmarks.metrics.usage_tracker import UsageTracker
 from benchmarks.tasks import TaskResult
@@ -140,7 +141,7 @@ async def _default_run_agent(
             metric_collector.record_cycle()
             status = await agent.bdi_cycle()
             metric_collector.record_step(success=True)
-            if status in {"stopped", "interrupted"}:
+            if is_final_cycle_status(status):
                 break
             await asyncio.sleep(0.1)
     return {"status": status}

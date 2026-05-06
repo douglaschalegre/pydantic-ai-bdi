@@ -2,6 +2,7 @@ import asyncio
 from pydantic_ai.mcp import MCPServerStdio
 from codex import CodexModel, CodexProvider
 from bdi import BDI
+from bdi.cycle import is_final_cycle_status
 from dotenv import load_dotenv
 import pathlib
 
@@ -46,12 +47,7 @@ agent = BDI(
     desires=[
         "I need a report of the commit history of the pydantic-ai-bdi repository for a presentation. The repository path is /Users/douglas/code/masters/pydantic-ai-bdi"
     ],
-    intentions=[
-        "Check the commit history of the pydantic-ai-bdi repository",
-        "Summarize the commit history",
-        "Create a presentation of the commit history",
-        "Summarize the latest advancements in the pydantic-ai-bdi repository",
-    ],
+    intentions=[],
     verbose=True,
     enable_human_in_the_loop=True,
     log_file_path="./bdi_agent_log.md",
@@ -67,7 +63,7 @@ async def main():
             cycle += 1
             print(f"\n===== Cycle {cycle} =====")
             status = await agent.bdi_cycle()
-            if status in ["stopped", "interrupted"]:
+            if is_final_cycle_status(status):
                 print(f"Agent cycle ended with status: {status}")
                 break
             await asyncio.sleep(2)

@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from pydantic_ai.mcp import MCPServerStdio
 
 from bdi import BDI
+from bdi.cycle import is_final_cycle_status
 from bdi.schemas import DesireStatus
 from codex import CodexModel, CodexProvider
 
@@ -255,7 +256,7 @@ async def run_task(model: CodexModel, task: HerokuappTask, output_path: Path) ->
                     outcome = desire_status.value
                     break
 
-                if cycle_status in {"stopped", "interrupted"}:
+                if is_final_cycle_status(cycle_status):
                     outcome = cycle_status
                     break
 

@@ -16,6 +16,7 @@ sys.path.insert(0, str(REPO_ROOT))
 from pydantic_ai.mcp import MCPServerStdio
 
 from bdi.agent import BDI
+from bdi.cycle import is_final_cycle_status
 from benchmarks.experiments.bdi import runner
 
 
@@ -58,9 +59,9 @@ async def run_agent(agent, metric_collector):
             metric_collector.record_cycle()
             status = await agent.bdi_cycle()
             metric_collector.record_step(success=True)
-            if status in {"stopped", "interrupted"}:
+            if is_final_cycle_status(status):
                 break
-    return {"success": status in {"stopped", "interrupted"}, "status": status}
+    return {"success": is_final_cycle_status(status), "status": status}
 
 
 if __name__ == "__main__":

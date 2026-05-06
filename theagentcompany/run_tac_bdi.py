@@ -21,6 +21,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from bdi import BDI
+from bdi.cycle import is_final_cycle_status
 from codex import CodexModel, CodexProvider
 from pydantic_ai.mcp import MCPServerStdio
 
@@ -1041,7 +1042,7 @@ async def run_cycles(
             status = await agent.bdi_cycle()
             if cycle_callback is not None:
                 cycle_callback(cycle)
-            if status in ["stopped", "interrupted"]:
+            if is_final_cycle_status(status):
                 loop_status = status
                 print(f"Agent cycle ended with status: {status}")
                 break
