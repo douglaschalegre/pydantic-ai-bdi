@@ -17,6 +17,8 @@ class StubBDIAgent:
         self.tool_configs = {}
         self._queued_run_outputs = deque()
         self.run_calls = []
+        self.cycle_count = 0
+        self.extracted_beliefs_from_desires = False
 
     def add_desire(
         self,
@@ -65,6 +67,9 @@ class StubBDIAgent:
         if not self._queued_run_outputs:
             raise AssertionError("StubBDIAgent.run called without queued output")
         return self._queued_run_outputs.popleft()
+
+    async def extract_beliefs_from_desires(self) -> None:
+        self.extracted_beliefs_from_desires = True
 
 
 @pytest.fixture

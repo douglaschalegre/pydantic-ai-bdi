@@ -21,7 +21,7 @@ from bdi.io_helpers import is_exit_command
 from bdi.logging import log_states
 from bdi.prompts import build_hitl_interpretation_prompt
 from bdi.state_transitions import (
-    finalize_current_intention,
+    complete_intention_and_update_desire,
     remove_intention,
     update_desire_status,
 )
@@ -422,11 +422,7 @@ async def apply_user_guided_action(
                 print(
                     f"{bcolors.INTENTION}  Skipping step completed intention for desire '{intention.desire_id}'.{bcolors.ENDC}"
                 )
-                finalize_current_intention(
-                    agent,
-                    intention,
-                    desire_status=DesireStatus.ACHIEVED,
-                )
+                await complete_intention_and_update_desire(agent, intention)
 
             return True
 

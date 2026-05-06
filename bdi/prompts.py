@@ -52,20 +52,36 @@ def build_initial_belief_extraction_prompt(desires_text: str) -> str:
     )
 
 
-def build_planning_stage1_prompt(desires_text: str, beliefs_text: str) -> str:
+def build_planning_stage1_prompt(
+    desires_text: str,
+    beliefs_text: str,
+    intention_guidance_text: str | None = None,
+) -> str:
+    guidance_section = (
+        f"""
+        Initial Intention Guidance:
+        {intention_guidance_text}
+
+        Treat this as contextual guidance from the original user-provided workflow, not as a mandatory queue to recreate.
+        """
+        if intention_guidance_text
+        else ""
+    )
     return dedent(
         f"""
         Given the following overall desires and current beliefs, identify high-level intentions required to fulfill these desires.
-        For each relevant desire, propose one or more concise intentions. Each intention should represent a distinct goal or task achievable *by you, the AI agent*.
+        For each relevant desire. Each intention should represent a distinct goal or task achievable *by you, the AI agent*.
 
         Focus ONLY on WHAT needs to be done at a high level, but ensure these goals are achievable through information processing, analysis, or using the available tools.
-        Do *not* propose intentions that require physical actions in the real world (e.g., installing hardware), direct interaction with physical systems beyond your tool capabilities, or capabilities you do not possess based on the available tools.
+        Do *not* propose intentions that you do not possess the hability to do.
 
         Overall Desires:
         {desires_text}
 
         Current Beliefs:
         {beliefs_text}
+
+        {guidance_section}
 
         Available Tools:
         (The underlying Pydantic AI agent will provide the available tools, including those from MCP, to the LLM.)
@@ -83,15 +99,13 @@ def build_planning_stage2_prompt(
 ) -> str:
     return dedent(
         f"""
-        Your task is to create a detailed, step-by-step action plan to achieve the following high-level intention:
+        Your task is to create a step-by-step action plan to achieve the following high-level intention:
         '{intention_description}' (This contributes to overall Desire ID: {desire_id})
 
         Consider the current beliefs and available tools to formulate the plan.
         Each step in the plan must be a single, concrete action that *you, the AI agent*, can perform. Steps MUST be one of the following:
         1. A specific call to an available tool (listed below), including necessary parameters based on context and beliefs.
         2. An internal information processing or analysis task (e.g., 'Analyze sensor data', 'Summarize report X', 'Compare belief A and B', 'Decide next action based on criteria Y').
-
-        Do *not* generate steps requiring physical actions, interaction with the physical world outside of tool capabilities, or capabilities you do not possess.
 
         Current Beliefs:
         {beliefs_text}
@@ -116,10 +130,12 @@ def build_planning_stage2_prompt(
         - For analysis tasks, describe the OUTPUT expected (e.g., "Extract commit summary from git log results and create presentation outline")
         - Avoid CHECK/VERIFY steps unless they're truly validation steps with binary success criteria
 
-        Generate a sequence of detailed steps required to execute this intention. Ensure the steps are logical and sequential.
+        Generate a sequence of steps required to execute this intention. Ensure the steps are logical and sequential.
         Structure the output as a list of steps according to the required format.
         Focus exclusively on HOW to achieve the intention '{intention_description}' using only the allowed action types.
         Provide parameters for tool calls based on the context and beliefs.
+
+        We need to prioritize plans that are efficient and avoid unnecessary work, so if the intention can be achieved with fewer steps or by leveraging existing beliefs, prefer that approach.
         """
     )
 
@@ -261,6 +277,49 @@ def build_step_assessment_prompt(
         Provide your assessment:
         - success: true if the step achieved its objective, false if it clearly failed
         - reason: brief explanation (especially important if failed)
+        """
+    )
+
+
+def build_desire_satisfaction_prompt(
+    desire_id: str,
+    desire_description: str,
+    completed_intention_description: str,
+    completed_intention_history: str,
+    current_beliefs: str,
+    remaining_intentions_text: str,
+) -> str:
+    return dedent(
+        f"""
+        Assess whether the Desire is satisfied after a completed Intention.
+
+        Desire:
+        - ID: {desire_id}
+        - Description: {desire_description}
+
+        Completed Intention:
+        {completed_intention_description}
+
+        Completed Intention History:
+        {completed_intention_history}
+
+        Current Beliefs:
+        {current_beliefs}
+
+        Remaining Intentions for this Desire:
+        {remaining_intentions_text}
+
+        Decide only whether the Desire itself is now satisfied.
+
+        Decision rules:
+        1. Return satisfied=true only when the Desire description has been fulfilled by the completed Intention history and current beliefs.
+        2. Return satisfied=false when useful work remains, when the outcome is partial, or when the evidence is unclear.
+        3. Do not mark the Desire satisfied merely because the Intention completed.
+        4. Remaining Intentions are context, not proof that the Desire is unsatisfied.
+
+        Provide your assessment as:
+        - satisfied: true if the Desire is fulfilled, false otherwise
+        - reason: concise explanation for the lifecycle decision
         """
     )
 
@@ -473,6 +532,7 @@ __all__ = [
     "build_planning_stage1_prompt",
     "build_planning_stage2_prompt",
     "build_plan_coverage_judgement_prompt",
+    "build_desire_satisfaction_prompt",
     "build_reconsideration_prompt",
     "build_belief_update_resolution_prompt",
     "build_belief_name_resolution_prompt",

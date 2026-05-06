@@ -13,9 +13,18 @@ from bdi.logging import log_states
 from bdi.planning import generate_intentions_from_desires
 from bdi.execution import execute_intentions
 from bdi.monitoring import reconsider_current_intention
+from bdi.state_transitions import all_desires_terminal
 
 if TYPE_CHECKING:
     from bdi.agent import BDI
+
+
+FINAL_CYCLE_STATUSES = frozenset({"terminal", "stopped", "interrupted"})
+
+
+def is_final_cycle_status(status: str) -> bool:
+    """Return True when a BDI cycle status should stop its caller loop."""
+    return status in FINAL_CYCLE_STATUSES
 
 
 async def bdi_cycle(agent: "BDI") -> str:
@@ -38,10 +47,22 @@ async def bdi_cycle(agent: "BDI") -> str:
         Status string indicating cycle outcome:
         - "executed": Normal cycle with work done
         - "idle_prompted": Agent was idle, user provided new desire
+        - "terminal": All known desires are terminal and no intentions remain
         - "stopped": User requested to quit
         - "interrupted": Non-interactive mode (EOF) or KeyboardInterrupt
     """
     agent.cycle_count += 1
+
+    if not agent.intentions and all_desires_terminal(agent):
+        print(
+            f"{bcolors.SYSTEM}All known desires are terminal and no intentions remain. Stopping cleanly.{bcolors.ENDC}"
+        )
+        log_states(
+            agent,
+            types=["beliefs", "desires", "intentions"],
+            message="States after BDI cycle (terminal)",
+        )
+        return "terminal"
 
     # Extract beliefs from desires on first cycle (before any execution)
     # This ensures factual information in desire descriptions is available as beliefs
@@ -169,6 +190,15 @@ async def bdi_cycle(agent: "BDI") -> str:
             f"{bcolors.SYSTEM}  Skipping reconsideration: No intentions remaining.{bcolors.ENDC}"
         )
 
+    if not agent.intentions and all_desires_terminal(agent):
+        print(f"{bcolors.SYSTEM}--- BDI Cycle End (terminal) ---{bcolors.ENDC}")
+        log_states(
+            agent,
+            types=["beliefs", "desires", "intentions"],
+            message="States after BDI cycle (terminal)",
+        )
+        return "terminal"
+
     print(f"{bcolors.SYSTEM}--- BDI Cycle End ---{bcolors.ENDC}")
     log_states(
         agent,
@@ -180,5 +210,7 @@ async def bdi_cycle(agent: "BDI") -> str:
 
 
 __all__ = [
+    "FINAL_CYCLE_STATUSES",
     "bdi_cycle",
+    "is_final_cycle_status",
 ]

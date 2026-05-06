@@ -8,10 +8,9 @@ import traceback
 from typing import TYPE_CHECKING
 from datetime import datetime
 from helper.util import bcolors
-from bdi.schemas import ReconsiderResult, DesireStatus
-from bdi.logging import log_states
+from bdi.schemas import ReconsiderResult
 from bdi.prompts import build_reconsideration_prompt
-from bdi.state_transitions import update_desire_status
+from bdi.state_transitions import replan_desire_for_intention
 
 if TYPE_CHECKING:
     from bdi.agent import BDI
@@ -146,17 +145,7 @@ async def reconsider_current_intention(agent: "BDI") -> None:
             print(
                 f"{bcolors.INTENTION}  Removing invalid intention for desire '{intention.desire_id}'.{bcolors.ENDC}"
             )
-            invalid_intention = agent.intentions.popleft()
-
-            if update_desire_status(
-                agent,
-                invalid_intention.desire_id,
-                DesireStatus.PENDING,
-            ):
-                print(
-                    f"{bcolors.DESIRE}  Setting desire '{invalid_intention.desire_id}' back to PENDING.{bcolors.ENDC}"
-                )
-            log_states(agent, ["intentions", "desires"])
+            replan_desire_for_intention(agent, intention, reason=reason)
 
     except Exception as recon_e:
         print(

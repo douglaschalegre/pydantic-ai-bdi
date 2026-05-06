@@ -20,7 +20,15 @@ class StepAssessmentResult(BaseModel):
     reason: str | None = None
 
 
+class DesireSatisfactionResult(BaseModel):
+    """Result of desire satisfaction assessment after an intention completes."""
+
+    satisfied: bool
+    reason: str | None = None
+
+
 __all__ = [
+    "DesireSatisfactionResult",
     "ReconsiderResult",
     "StepAssessmentResult",
 ]

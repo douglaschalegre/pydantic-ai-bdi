@@ -25,6 +25,7 @@ from bdi.prompts import (
     build_planning_stage2_prompt,
     build_plan_coverage_judgement_prompt,
 )
+from bdi.state_transitions import update_desire_status
 
 if TYPE_CHECKING:
     from bdi.agent import BDI
@@ -197,6 +198,15 @@ async def generate_intentions_from_desires(agent: "BDI") -> None:
         )
         return
 
+    active_desires = [
+        d
+        for d in agent.desires
+        if d.status in [DesireStatus.PENDING, DesireStatus.ACTIVE]
+    ]
+    if not active_desires:
+        print(f"{bcolors.SYSTEM}No active or pending desires to plan for.{bcolors.ENDC}")
+        return
+
     if agent.verbose:
         print(
             f"{bcolors.SYSTEM}Starting two-stage intention generation...{bcolors.ENDC}"
@@ -205,7 +215,7 @@ async def generate_intentions_from_desires(agent: "BDI") -> None:
 
     # --- Context Gathering (Common for both stages) ---
     desires_text = "\n".join(
-        [f"- ID: {d.id}, Description: {d.description}" for d in agent.desires]
+        [f"- ID: {d.id}, Description: {d.description}" for d in active_desires]
     )
     beliefs_text = (
         "\n".join(
@@ -223,15 +233,17 @@ async def generate_intentions_from_desires(agent: "BDI") -> None:
     # If so, use them directly instead of generating via LLM
     high_level_intentions: List[HighLevelIntention] = []
 
-    if agent.initial_intention_guidance:
+    use_explicit_intentions = bool(agent.initial_intention_guidance) and not getattr(
+        agent,
+        "_initial_intention_guidance_consumed",
+        False,
+    )
+
+    if use_explicit_intentions:
+        agent._initial_intention_guidance_consumed = True
         # User provided explicit intentions - use them directly
         # Associate all intentions with the first active/pending desire
         # (In most cases, explicit intentions relate to a single primary desire)
-        active_desires = [
-            d
-            for d in agent.desires
-            if d.status in [DesireStatus.PENDING, DesireStatus.ACTIVE]
-        ]
         primary_desire_id = (
             active_desires[0].id if active_desires else agent.desires[0].id
         )
@@ -255,7 +267,16 @@ async def generate_intentions_from_desires(agent: "BDI") -> None:
             print(
                 f"{bcolors.SYSTEM}Stage 1: Generating high-level intentions...{bcolors.ENDC}"
             )
-        prompt_stage1 = build_planning_stage1_prompt(desires_text, beliefs_text)
+        intention_guidance_text = (
+            "\n".join(f"- {item}" for item in agent.initial_intention_guidance)
+            if agent.initial_intention_guidance
+            else None
+        )
+        prompt_stage1 = build_planning_stage1_prompt(
+            desires_text,
+            beliefs_text,
+            intention_guidance_text,
+        )
         try:
             stage1_result = await agent.run(
                 prompt_stage1, output_type=HighLevelIntentionList
@@ -379,6 +400,8 @@ async def generate_intentions_from_desires(agent: "BDI") -> None:
 
     # --- Update Agent State ---
     agent.intentions = deque(final_intentions)
+    for desire_id in {intention.desire_id for intention in final_intentions}:
+        update_desire_status(agent, desire_id, DesireStatus.ACTIVE)
     print(
         f"{bcolors.SYSTEM}Intention generation complete. Updated agent with {len(agent.intentions)} detailed intentions.{bcolors.ENDC}"
     )

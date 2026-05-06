@@ -68,6 +68,7 @@ class BDI(Agent, Generic[T]):
         self.desires: List[Desire] = []
         self.intentions: deque = deque()
         self.initial_intention_guidance: List[str] = intentions or []
+        self._initial_intention_guidance_consumed = False
         self.verbose = verbose
         self.enable_human_in_the_loop = enable_human_in_the_loop
         self.log_file_path = log_file_path
@@ -325,6 +326,7 @@ class BDI(Agent, Generic[T]):
             Status string indicating cycle outcome:
             - "executed": Normal cycle with work done
             - "idle_prompted": Agent was idle, user provided new desire
+            - "terminal": All known desires are terminal and no intentions remain
             - "stopped": User requested to quit
             - "interrupted": Non-interactive mode (EOF) or KeyboardInterrupt
         """

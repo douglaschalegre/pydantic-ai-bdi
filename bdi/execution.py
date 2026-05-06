@@ -12,7 +12,7 @@ import json
 from types import SimpleNamespace
 
 from helper.util import bcolors
-from bdi.schemas import IntentionStep, BeliefExtractionResult, DesireStatus, StepAssessmentResult
+from bdi.schemas import IntentionStep, BeliefExtractionResult, StepAssessmentResult
 from bdi.errors import is_validation_output_error
 from bdi.belief_updates import update_beliefs_from_step_extraction
 from bdi.logging import log_states, format_beliefs_for_context
@@ -23,7 +23,10 @@ from bdi.prompts import (
     build_step_belief_extraction_prompt,
     build_tool_execution_prompt,
 )
-from bdi.state_transitions import finalize_current_intention
+from bdi.state_transitions import (
+    complete_intention_and_update_desire,
+    replan_desire_for_intention,
+)
 
 if TYPE_CHECKING:
     from pydantic_ai.agent import AgentRunResult
@@ -423,11 +426,10 @@ def _handle_step_execution_exception(
         beliefs_updated=_snapshot_beliefs(agent),
     )
 
-    finalize_current_intention(
+    replan_desire_for_intention(
         agent,
         intention,
-        desire_status=DesireStatus.FAILED,
-        force_status_update=True,
+        reason=f"Exception during step execution: {error}",
     )
 
 
@@ -513,18 +515,14 @@ def _record_step_outcome(
     )
 
 
-def _handle_successful_step(agent: "BDI", intention) -> None:
+async def _handle_successful_step(agent: "BDI", intention) -> None:
     intention.increment_current_step(lambda **kwargs: log_states(agent, **kwargs))
 
     if intention.current_step >= len(intention.steps):
         print(
             f"{bcolors.INTENTION}Completed final step. Intention for desire '{intention.desire_id}' finished.{bcolors.ENDC}"
         )
-        finalize_current_intention(
-            agent,
-            intention,
-            desire_status=DesireStatus.ACHIEVED,
-        )
+        await complete_intention_and_update_desire(agent, intention)
 
 
 async def _handle_failed_step(
@@ -567,6 +565,14 @@ async def _handle_failed_step(
         }
 
     log_states(agent, ["beliefs"])
+    replan_desire_for_intention(
+        agent,
+        intention,
+        reason=(
+            f"Step {intention.current_step + 1} failed after "
+            f"{retry_ctx.attempt_number} retry attempt(s)."
+        ),
+    )
     return _default_hitl_info()
 
 
@@ -592,11 +598,7 @@ async def execute_intentions(agent: "BDI") -> Dict:
         print(
             f"{bcolors.INTENTION}Intention for desire '{intention.desire_id}' already completed (found in execute_intentions).{bcolors.ENDC}"
         )
-        finalize_current_intention(
-            agent,
-            intention,
-            desire_status=DesireStatus.ACHIEVED,
-        )
+        await complete_intention_and_update_desire(agent, intention)
         return _default_hitl_info()
 
     current_step = intention.steps[intention.current_step]
@@ -622,7 +624,7 @@ async def execute_intentions(agent: "BDI") -> Dict:
     )
 
     if step_succeeded:
-        _handle_successful_step(agent, intention)
+        await _handle_successful_step(agent, intention)
         return _default_hitl_info()
 
     return await _handle_failed_step(
