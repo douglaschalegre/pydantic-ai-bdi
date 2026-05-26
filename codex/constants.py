@@ -29,12 +29,12 @@ CODEX_DEFAULT_INSTRUCTIONS = (
 TOKEN_STORAGE_PATH = "~/.codex_oauth_tokens.json"
 
 # Model defaults
-CODEX_DEFAULT_MODEL = "gpt-5.3-codex"
+CODEX_DEFAULT_MODEL = "gpt-5.2"
 
 CODEX_MODEL_ALIASES = {
     "openai-codex/gpt-5.5": "gpt-5.5",
     "openai-codex/gpt-5.3-codex": "gpt-5.3-codex",
-    "openai-codex/gpt-5.2-codex": "gpt-5.2-codex",
+    "openai-codex/gpt-5.2": "gpt-5.2",
     "openai-codex/gpt-5.1-codex": "gpt-5.1-codex",
     "openai-codex/gpt-5-codex": "gpt-5-codex",
     "openai-codex/codex-mini-latest": "codex-mini-latest",
@@ -43,7 +43,7 @@ CODEX_MODEL_ALIASES = {
 CodexModelName = Literal[
     "gpt-5.5",
     "gpt-5.3-codex",
-    "gpt-5.2-codex",
+    "gpt-5.2",
     "gpt-5.1-codex",
     "gpt-5-codex",
     "codex-mini-latest",
