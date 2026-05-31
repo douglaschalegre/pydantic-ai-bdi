@@ -9,7 +9,6 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
-
 BeliefMutation = Literal["created", "updated", "unchanged"]
 
 
@@ -148,11 +147,46 @@ class BeliefNameResolutionDecision(BaseModel):
     )
 
 
+class BatchBeliefResolutionDecision(BaseModel):
+    """LLM decision for one belief in a batch resolution pass."""
+
+    incoming_index: int = Field(
+        description="Index of the incoming belief this decision applies to"
+    )
+    resolved_name: str = Field(
+        description="Final belief name to use (existing key or incoming key)",
+        min_length=1,
+    )
+    should_update: bool = Field(
+        description="Whether the resolved belief should be created or updated"
+    )
+    normalized_value: str = Field(
+        description="Canonical string value to store if creating or updating"
+    )
+    certainty: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Confidence score for the value that should be stored",
+    )
+    rationale: str = Field(description="Brief explanation for the decision")
+
+
+class BatchBeliefResolutionResult(BaseModel):
+    """Batch LLM decisions for ambiguous or conflicting belief updates."""
+
+    decisions: List[BatchBeliefResolutionDecision] = Field(
+        default_factory=list,
+        description="One decision for each incoming belief needing resolution",
+    )
+
+
 __all__ = [
     "Belief",
     "BeliefSet",
     "ExtractedBelief",
     "BeliefExtractionResult",
     "BeliefNameResolutionDecision",
+    "BatchBeliefResolutionDecision",
+    "BatchBeliefResolutionResult",
     "BeliefUpdateDecision",
 ]

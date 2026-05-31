@@ -143,7 +143,10 @@ async def extract_relevant_beliefs_from_result(
 
 
 async def analyze_step_outcome_and_update_beliefs(
-    agent: "BDI", step: IntentionStep, result: Optional["AgentRunResult"]
+    agent: "BDI",
+    step: IntentionStep,
+    result: Optional["AgentRunResult"],
+    extracted_beliefs_out: Optional[List[Dict[str, Any]]] = None,
 ) -> bool:
     """Analyze the outcome of an executed step, updates beliefs, and determines success.
 
@@ -187,8 +190,14 @@ async def analyze_step_outcome_and_update_beliefs(
 
     step_success = False
     try:
-        assessment_result = await agent.run(assessment_prompt, output_type=StepAssessmentResult)
-        if assessment_result and assessment_result.output and assessment_result.output.success:
+        assessment_result = await agent.run(
+            assessment_prompt, output_type=StepAssessmentResult
+        )
+        if (
+            assessment_result
+            and assessment_result.output
+            and assessment_result.output.success
+        ):
             if agent.verbose:
                 print(
                     f"{bcolors.SYSTEM}  LLM Assessment: Step SUCCEEDED.{bcolors.ENDC}"
@@ -201,7 +210,11 @@ async def analyze_step_outcome_and_update_beliefs(
         else:
             reason = (
                 assessment_result.output.reason
-                if (assessment_result and assessment_result.output and assessment_result.output.reason)
+                if (
+                    assessment_result
+                    and assessment_result.output
+                    and assessment_result.output.reason
+                )
                 else "No assessment result or negative assessment"
             )
             print(
@@ -217,7 +230,14 @@ async def analyze_step_outcome_and_update_beliefs(
         # INTELLIGENT FALLBACK: Don't default to failure
         # For tool calls, check if the result contains error indicators
         if step.is_tool_call and result and result.output:
-            error_indicators = ["error", "exception", "failed to", "could not", "not found", "does not exist"]
+            error_indicators = [
+                "error",
+                "exception",
+                "failed to",
+                "could not",
+                "not found",
+                "does not exist",
+            ]
             result_lower = result.output.lower()
 
             has_error = any(indicator in result_lower for indicator in error_indicators)
@@ -245,6 +265,8 @@ async def analyze_step_outcome_and_update_beliefs(
     extracted_beliefs = await extract_relevant_beliefs_from_result(
         agent, step, result, step_success
     )
+    if extracted_beliefs_out is not None:
+        extracted_beliefs_out.extend(extracted_beliefs)
 
     # Update the belief set with extracted beliefs
     if extracted_beliefs:
@@ -318,10 +340,12 @@ def _log_tool_debug_messages(agent: "BDI", step_result: "AgentRunResult") -> Non
 
             if getattr(part, "tool_call_id", None):
                 content = getattr(part, "content", "")
-                content_preview = "<binary>" if isinstance(content, (bytes, bytearray)) else str(content)[:200]
-                print(
-                    f"{bcolors.SYSTEM}    Result: {content_preview}...{bcolors.ENDC}"
+                content_preview = (
+                    "<binary>"
+                    if isinstance(content, (bytes, bytearray))
+                    else str(content)[:200]
                 )
+                print(f"{bcolors.SYSTEM}    Result: {content_preview}...{bcolors.ENDC}")
 
     print(f"{bcolors.SYSTEM}  === End Tool Call Details ==={bcolors.ENDC}")
 
@@ -458,10 +482,12 @@ async def _run_step_with_retries(
 
         try:
             step_result = await _run_step_attempt(agent, current_step, retry_ctx)
+            extracted_beliefs: List[Dict[str, Any]] = []
             step_succeeded = await analyze_step_outcome_and_update_beliefs(
                 agent,
                 current_step,
                 step_result,
+                extracted_beliefs_out=extracted_beliefs,
             )
 
             if step_succeeded:
@@ -470,12 +496,6 @@ async def _run_step_with_retries(
                 )
                 break
 
-            extracted_beliefs = await extract_relevant_beliefs_from_result(
-                agent,
-                current_step,
-                step_result,
-                step_succeeded,
-            )
             retry_ctx.record_failure(
                 result_output=step_result.output if step_result else "No result",
                 beliefs_extracted=extracted_beliefs,
