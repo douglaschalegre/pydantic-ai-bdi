@@ -74,12 +74,22 @@ def _build_intention(high_level_intention: HighLevelIntention) -> Intention:
     )
 
 
+def _select_high_level_intention(
+    high_level_intentions: List[HighLevelIntention],
+    pending_desire_ids: set[str],
+) -> HighLevelIntention | None:
+    """Return the first planner output targeting a pending Desire."""
+    for high_level_intention in high_level_intentions:
+        if high_level_intention.desire_id in pending_desire_ids:
+            return high_level_intention
+    return None
+
+
 async def generate_intentions_from_desires(agent: "BDI") -> None:
     """Convert desires into high-level executable intentions.
 
-    The planner now performs only one planning pass. Detailed-step expansion is
-    intentionally omitted to avoid over-granular plans and excess replanning
-    cycles.
+    The planner performs one planning pass and commits one pending Desire as one
+    Intention with one Plan.
 
     Args:
         agent: The BDI agent instance
@@ -93,13 +103,9 @@ async def generate_intentions_from_desires(agent: "BDI") -> None:
         )
         return
 
-    active_desires = [
-        d
-        for d in agent.desires
-        if d.status in [DesireStatus.PENDING, DesireStatus.ACTIVE]
-    ]
-    if not active_desires:
-        print(f"{bcolors.SYSTEM}No active or pending desires to plan for.{bcolors.ENDC}")
+    pending_desires = [d for d in agent.desires if d.status is DesireStatus.PENDING]
+    if not pending_desires:
+        print(f"{bcolors.SYSTEM}No pending desires to plan for.{bcolors.ENDC}")
         return
 
     if agent.verbose:
@@ -109,7 +115,7 @@ async def generate_intentions_from_desires(agent: "BDI") -> None:
 
     # --- Context Gathering ---
     desires_text = "\n".join(
-        [f"- ID: {d.id}, Description: {d.description}" for d in active_desires]
+        [f"- ID: {d.id}, Description: {d.description}" for d in pending_desires]
     )
     beliefs_text = (
         "\n".join(
@@ -135,26 +141,25 @@ async def generate_intentions_from_desires(agent: "BDI") -> None:
 
     if use_explicit_intentions:
         agent._initial_intention_guidance_consumed = True
-        # User provided explicit intentions - use them directly
-        # Associate all intentions with the first active/pending desire
-        # (In most cases, explicit intentions relate to a single primary desire)
+        # User provided explicit intentions - use the first one for the next
+        # pending Desire so planning still commits only one Intention.
         primary_desire_id = (
-            active_desires[0].id if active_desires else agent.desires[0].id
+            pending_desires[0].id if pending_desires else agent.desires[0].id
         )
 
         print(
-            f"{bcolors.SYSTEM}Using {len(agent.initial_intention_guidance)} explicit intentions provided by user (skipping planning LLM).{bcolors.ENDC}"
+            f"{bcolors.SYSTEM}Using first explicit intention provided by user (skipping planning LLM).{bcolors.ENDC}"
         )
 
-        for intention_desc in agent.initial_intention_guidance:
-            high_level_intentions.append(
-                HighLevelIntention(
-                    desire_id=primary_desire_id,
-                    description=intention_desc,
-                )
+        intention_desc = agent.initial_intention_guidance[0]
+        high_level_intentions.append(
+            HighLevelIntention(
+                desire_id=primary_desire_id,
+                description=intention_desc,
             )
-            if agent.verbose:
-                print(f"{bcolors.INTENTION}  - {intention_desc}{bcolors.ENDC}")
+        )
+        if agent.verbose:
+            print(f"{bcolors.INTENTION}  - {intention_desc}{bcolors.ENDC}")
     else:
         # No explicit intentions - generate high-level intentions via LLM.
         if agent.verbose:
@@ -206,14 +211,23 @@ async def generate_intentions_from_desires(agent: "BDI") -> None:
         verbose=agent.verbose,
     )
 
-    final_intentions = [_build_intention(intent) for intent in high_level_intentions]
+    selected_intention = _select_high_level_intention(
+        high_level_intentions,
+        {desire.id for desire in pending_desires},
+    )
+    if selected_intention is None:
+        print(
+            f"{bcolors.FAIL}No generated intention targeted a pending desire.{bcolors.ENDC}"
+        )
+        return
+
+    final_intention = _build_intention(selected_intention)
 
     # --- Update Agent State ---
-    agent.intentions = deque(final_intentions)
-    for desire_id in {intention.desire_id for intention in final_intentions}:
-        update_desire_status(agent, desire_id, DesireStatus.ACTIVE)
+    agent.intentions = deque([final_intention])
+    update_desire_status(agent, final_intention.desire_id, DesireStatus.ACTIVE)
     print(
-        f"{bcolors.SYSTEM}Intention generation complete. Updated agent with {len(agent.intentions)} high-level intentions.{bcolors.ENDC}"
+        f"{bcolors.SYSTEM}Intention generation complete. Updated agent with one high-level intention.{bcolors.ENDC}"
     )
     log_states(agent, ["intentions"])
 

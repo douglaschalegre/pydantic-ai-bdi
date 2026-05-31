@@ -69,13 +69,13 @@ def build_planning_stage1_prompt(
     )
     return dedent(
         f"""
-        Given the following overall desires and current beliefs, identify high-level intentions required to fulfill these desires.
-        For each relevant desire. Each intention should represent a distinct goal or task achievable *by you, the AI agent*.
+        Given the following pending desires and current beliefs, select exactly one desire to pursue now and identify exactly one high-level intention for it.
+        The intention should represent a distinct goal or task achievable *by you, the AI agent*.
 
         Focus ONLY on WHAT needs to be done at a high level, but ensure these goals are achievable through information processing, analysis, or using the available tools.
         Do *not* propose intentions that you do not possess the hability to do.
 
-        Overall Desires:
+        Pending Desires:
         {desires_text}
 
         Current Beliefs:
@@ -86,7 +86,8 @@ def build_planning_stage1_prompt(
         Available Tools:
         (The underlying Pydantic AI agent will provide the available tools, including those from MCP, to the LLM.)
 
-        Respond with a list of high-level intentions using the required format. Associate each intention with its corresponding desire ID.
+        Respond with exactly one high-level intention using the required format. Associate it with the selected desire ID.
+        Do not propose intentions for unselected desires.
         """
     )
 
