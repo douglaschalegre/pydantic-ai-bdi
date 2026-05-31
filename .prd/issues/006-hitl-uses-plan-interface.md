@@ -3,7 +3,7 @@ title: HITL Uses Plan Interface
 labels:
   - needs-triage
 type: AFK
-status: draft
+status: completed
 ---
 
 ## What to build
@@ -12,11 +12,11 @@ Migrate human-in-the-loop plan manipulation so it targets the Plan Interface and
 
 ## Acceptance criteria
 
-- [ ] HITL failure context describes the active Plan and current Plan Step.
-- [ ] HITL step modification updates Plan Steps through the Plan Interface.
-- [ ] HITL insert, replace, and truncate operations preserve Intention commitment semantics.
-- [ ] HITL guidance can update Beliefs without requiring an Intention lifecycle reset.
-- [ ] Tests cover HITL plan manipulation using Plan and Plan Step concepts.
+- [x] HITL failure context describes the active Plan and current Plan Step.
+- [x] HITL step modification updates Plan Steps through the Plan Interface.
+- [x] HITL insert, replace, and truncate operations preserve Intention commitment semantics.
+- [x] HITL guidance can update Beliefs without requiring an Intention lifecycle reset.
+- [x] Tests cover HITL plan manipulation using Plan and Plan Step concepts.
 
 ## Blocked by
 

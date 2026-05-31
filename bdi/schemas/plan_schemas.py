@@ -58,6 +58,66 @@ class Plan(BaseModel):
         """Return True when every Plan Step has been advanced past."""
         return self.current_step_index >= len(self.steps)
 
+    def current_step(self) -> Optional[PlanStep]:
+        """Return the currently executable Plan Step, if one exists."""
+        if self.is_complete():
+            return None
+        return self.steps[self.current_step_index]
+
+    def remaining_steps_after_current(self) -> List[PlanStep]:
+        """Return Plan Steps that follow the currently executable Plan Step."""
+        return self.steps[self.current_step_index + 1 :]
+
+    def modify_current_step(self, modifications: Dict[str, Any]) -> None:
+        """Apply field updates to the current Plan Step."""
+        current_step = self.current_step()
+        if current_step is None:
+            raise IndexError("No current Plan Step to modify")
+
+        unknown_fields = set(modifications) - set(PlanStep.model_fields)
+        if unknown_fields:
+            field_list = ", ".join(sorted(unknown_fields))
+            raise ValueError(f"Unknown Plan Step field(s): {field_list}")
+
+        self.steps[self.current_step_index] = PlanStep.model_validate(
+            current_step.model_dump() | modifications
+        )
+
+    def replace_current_step(self, new_steps: List[PlanStep]) -> None:
+        """Replace the current Plan Step with one or more Plan Steps."""
+        if self.current_step() is None:
+            raise IndexError("No current Plan Step to replace")
+        self.steps = (
+            self.steps[: self.current_step_index]
+            + new_steps
+            + self.steps[self.current_step_index + 1 :]
+        )
+        self.status = PlanStatus.ACTIVE
+
+    def insert_steps_before_current(self, new_steps: List[PlanStep]) -> None:
+        """Insert Plan Steps before the current Plan Step without changing commitment."""
+        if self.current_step() is None:
+            raise IndexError("No current Plan Step before which to insert")
+        self.steps = (
+            self.steps[: self.current_step_index]
+            + new_steps
+            + self.steps[self.current_step_index :]
+        )
+        self.status = PlanStatus.ACTIVE
+
+    def insert_steps_after_current(self, new_steps: List[PlanStep]) -> None:
+        """Insert Plan Steps immediately after the current Plan Step."""
+        if self.current_step() is None:
+            raise IndexError("No current Plan Step after which to insert")
+        insert_point = self.current_step_index + 1
+        self.steps = self.steps[:insert_point] + new_steps + self.steps[insert_point:]
+        self.status = PlanStatus.ACTIVE
+
+    def replace_remaining_steps(self, new_steps: List[PlanStep]) -> None:
+        """Replace the current and future Plan Steps, preserving completed steps."""
+        self.steps = self.steps[: self.current_step_index] + new_steps
+        self.status = PlanStatus.ACTIVE
+
     def advance_current_step(self, logger: Callable, *, desire_id: str) -> None:
         """Advance to the next Plan Step and mark the Plan completed when exhausted."""
         self.current_step_index += 1

@@ -50,9 +50,19 @@ def build_failure_context(
         Dictionary containing comprehensive failure context
     """
     plan = intention.active_plan
+    current_plan_step = plan.current_step()
     context = {
         "desire_id": intention.desire_id,
         "intention_description": intention.description,
+        "active_plan": {
+            "status": plan.status.value,
+            "current_step_index": plan.current_step_index,
+            "total_steps": len(plan.steps),
+            "steps": [step.model_dump() for step in plan.steps],
+        },
+        "current_plan_step": current_plan_step.model_dump()
+        if current_plan_step
+        else None,
         "plan_status": plan.status.value,
         "failed_step_description": failed_step.description,
         "failed_step_number": plan.current_step_index + 1,
@@ -84,7 +94,7 @@ def build_failure_context(
                 "tool_name": s.tool_name,
                 "tool_params": s.tool_params,
             }
-            for s in plan.steps[plan.current_step_index + 1 :]
+            for s in plan.remaining_steps_after_current()
         ],
         "original_failed_step_object": failed_step.model_dump(),
     }
@@ -108,6 +118,9 @@ def present_context_to_user(failure_context: Dict[str, Any]) -> None:
     )
     print(
         f"Failed Plan Step ({failure_context['failed_step_number']}/{failure_context['total_steps_in_plan']}): {failure_context['failed_step_description']}"
+    )
+    print(
+        f"Active Plan: {failure_context['active_plan']['status']} at Plan Step {failure_context['failed_step_number']}/{failure_context['total_steps_in_plan']}"
     )
     if failure_context["is_tool_call"]:
         print(
@@ -320,7 +333,6 @@ async def apply_user_guided_action(
     """
 
     plan = intention.active_plan
-    idx = plan.current_step_index
     applied_successfully = False
     beliefs_updated = False
 
@@ -345,23 +357,12 @@ async def apply_user_guided_action(
             return True
 
         async def _handle_modify_current_and_retry() -> bool:
-            if directive.current_step_modifications and idx < len(plan.steps):
-                step_to_modify = plan.steps[idx]
-                for (
-                    field_name,
-                    new_value,
-                ) in directive.current_step_modifications.items():
-                    if hasattr(step_to_modify, field_name):
-                        setattr(step_to_modify, field_name, new_value)
-                    else:
-                        print(
-                            f"{bcolors.WARNING}  Cannot modify unknown field '{field_name}' in step.{bcolors.ENDC}"
-                        )
-
+            if directive.current_step_modifications:
+                plan.modify_current_step(directive.current_step_modifications)
                 log_states(
                     agent,
                     ["intentions"],
-                    message=f"Plan Step {idx + 1} modified by user guidance.",
+                    message=f"Plan Step {plan.current_step_index + 1} modified by user guidance.",
                 )
                 return True
 
@@ -383,23 +384,13 @@ async def apply_user_guided_action(
             ]
 
             if manip_type == "REPLACE_CURRENT_STEP_WITH_NEW":
-                if idx >= len(plan.steps):
-                    raise IndexError(
-                        "Invalid step index for REPLACE_CURRENT_STEP_WITH_NEW"
-                    )
-                plan.steps.pop(idx)
-                for i, new_step in enumerate(new_steps_list):
-                    plan.steps.insert(idx + i, new_step)
+                plan.replace_current_step(new_steps_list)
             elif manip_type == "INSERT_NEW_STEPS_BEFORE_CURRENT":
-                for i, new_step in enumerate(new_steps_list):
-                    plan.steps.insert(idx + i, new_step)
+                plan.insert_steps_before_current(new_steps_list)
             elif manip_type == "INSERT_NEW_STEPS_AFTER_CURRENT":
-                insert_point = idx + 1
-                for i, new_step in enumerate(new_steps_list):
-                    plan.steps.insert(insert_point + i, new_step)
+                plan.insert_steps_after_current(new_steps_list)
             elif manip_type == "REPLACE_REMAINDER_OF_PLAN":
-                plan.steps = plan.steps[:idx]
-                plan.steps.extend(new_steps_list)
+                plan.replace_remaining_steps(new_steps_list)
                 if not plan.steps:
                     print(
                         f"{bcolors.WARNING}  Plan became empty after REPLACE_REMAINDER. Aborting intention.{bcolors.ENDC}"
@@ -415,7 +406,7 @@ async def apply_user_guided_action(
             return True
 
         async def _handle_skip_current_step() -> bool:
-            if idx >= len(plan.steps):
+            if plan.current_step() is None:
                 print(
                     f"{bcolors.WARNING}  Cannot skip, already at end of plan or invalid index.{bcolors.ENDC}"
                 )
