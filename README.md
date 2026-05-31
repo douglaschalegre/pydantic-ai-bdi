@@ -23,10 +23,8 @@ Defines the core data structures using Pydantic models:
 
 ## Key Features
 
-### 1. Two-Stage Planning
-The agent uses a sophisticated planning approach:
-- **Stage 1**: Converts desires into high-level intentions using LLM reasoning
-- **Stage 2**: Breaks down each high-level intention into detailed, executable steps
+### 1. Single-Stage Planning
+The agent converts desires into high-level intentions using LLM reasoning. Each intention is executed as one descriptive step so the execution agent can use tools directly instead of following an over-granular pre-expanded plan.
 
 ### 2. Human-in-the-Loop (HITL)
 When a step fails, the agent can:
@@ -50,7 +48,7 @@ The agent runs a continuous reasoning cycle:
 
 1. **Belief Update**: Update beliefs based on action outcomes
 2. **Deliberation**: Check desire statuses and priorities
-3. **Intention Generation**: Create new plans if needed using two-stage LLM planning
+3. **Intention Generation**: Create new high-level intentions if needed using single-stage LLM planning
 4. **Intention Execution**: Execute one step of the current plan
 5. **Reconsideration**: Evaluate if the plan should continue or be modified
 
