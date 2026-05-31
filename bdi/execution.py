@@ -28,10 +28,7 @@ from bdi.prompts import (
     build_step_belief_extraction_prompt,
     build_tool_execution_prompt,
 )
-from bdi.state_transitions import (
-    complete_intention_and_update_desire,
-    replan_desire_for_intention,
-)
+from bdi.state_transitions import complete_intention_and_update_desire
 
 if TYPE_CHECKING:
     from pydantic_ai.agent import AgentRunResult
@@ -458,10 +455,8 @@ def _handle_step_execution_exception(
     )
     plan.status = PlanStatus.FAILED
 
-    replan_desire_for_intention(
-        agent,
-        intention,
-        reason=f"Exception during step execution: {error}",
+    print(
+        f"{bcolors.WARNING}  Plan marked failed after exception; plan-level reconsideration will decide whether to continue, repair, replace, or fail the Desire.{bcolors.ENDC}"
     )
 
 
@@ -600,13 +595,8 @@ async def _handle_failed_step(
 
     log_states(agent, ["beliefs"])
     plan.status = PlanStatus.FAILED
-    replan_desire_for_intention(
-        agent,
-        intention,
-        reason=(
-            f"Plan Step {plan.current_step_index + 1} failed after "
-            f"{retry_ctx.attempt_number} retry attempt(s)."
-        ),
+    print(
+        f"{bcolors.WARNING}  Plan marked failed; plan-level reconsideration will decide whether to continue, repair, replace, or fail the Desire.{bcolors.ENDC}"
     )
     return _default_hitl_info()
 

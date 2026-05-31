@@ -41,7 +41,7 @@ async def test_execute_intentions_completed_intention_finalizes_desire(
 
 
 @pytest.mark.asyncio
-async def test_execute_intentions_exception_requeues_desire(
+async def test_execute_intentions_exception_preserves_commitment_for_reconsideration(
     monkeypatch, stub_agent
 ) -> None:
     desire = stub_agent.add_desire(
@@ -62,8 +62,9 @@ async def test_execute_intentions_exception_requeues_desire(
     result = await execution.execute_intentions(stub_agent)
 
     assert result == {"hitl_modified_plan": False, "hitl_updated_beliefs": False}
-    assert desire.status is DesireStatus.PENDING
-    assert len(stub_agent.intentions) == 0
+    assert desire.status is DesireStatus.ACTIVE
+    assert len(stub_agent.intentions) == 1
+    assert stub_agent.intentions[0] is intention
     assert intention.active_plan.status is PlanStatus.FAILED
     assert len(intention.active_plan.step_history) == 1
     assert intention.active_plan.step_history[0].success is False

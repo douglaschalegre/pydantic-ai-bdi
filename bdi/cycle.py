@@ -158,7 +158,13 @@ async def bdi_cycle(agent: "BDI") -> str:
 
     # 4. Intention Execution (One Step)
     hitl_info = {"hitl_modified_plan": False, "hitl_updated_beliefs": False}
+    executed_plan = None
+    history_count_before_execution = 0
+    step_index_before_execution = 0
     if agent.intentions:
+        executed_plan = agent.intentions[0].active_plan
+        history_count_before_execution = len(executed_plan.step_history)
+        step_index_before_execution = executed_plan.current_step_index
         hitl_info = await execute_intentions(agent)
     else:
         print(f"{bcolors.SYSTEM}No intentions to execute this cycle.{bcolors.ENDC}")
@@ -177,8 +183,22 @@ async def bdi_cycle(agent: "BDI") -> str:
     elif agent.intentions:  # Check if an intention still exists
         current_intention = agent.intentions[0]
         current_plan = current_intention.active_plan
+        latest_history = (
+            current_plan.step_history[-1]
+            if len(current_plan.step_history) > history_count_before_execution
+            else None
+        )
+        if (
+            executed_plan is current_plan
+            and latest_history
+            and latest_history.success
+            and latest_history.step_number == step_index_before_execution
+        ):
+            print(
+                f"{bcolors.SYSTEM}  Skipping reconsideration: Plan Step succeeded and Plan progress should continue.{bcolors.ENDC}"
+            )
         # Only reconsider if the intention wasn't just completed/removed by execute_intentions
-        if not current_plan.steps or current_plan.current_step_index < len(
+        elif not current_plan.steps or current_plan.current_step_index < len(
             current_plan.steps
         ):
             await reconsider_current_intention(agent)

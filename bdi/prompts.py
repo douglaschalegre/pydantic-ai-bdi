@@ -288,32 +288,42 @@ def build_descriptive_execution_prompt(
 
 def build_reconsideration_prompt(
     beliefs_text: str,
-    history_context: str,
+    completed_steps_text: str,
     desire_id: str,
     remaining_steps_text: str,
+    failure_history_text: str,
 ) -> str:
     return dedent(
         f"""
         Current Agent Beliefs:
         {beliefs_text}
 
-        Plan Step History:
-        {history_context}
+        Completed Plan Steps:
+        {completed_steps_text}
 
         Remaining Plan Steps (for Desire ID '{desire_id}'):
         {remaining_steps_text}
 
-        Evaluate whether the remaining plan should continue or needs revision.
+        Relevant Failure History:
+        {failure_history_text}
+
+        Evaluate the active Plan as a whole, not whether one Plan Step is sufficient by itself.
 
         Provide your assessment as:
-        - valid: true if the plan seems sound to continue, false if it needs revision
-        - reason: if valid is false, provide a brief explanation of why the plan is flawed
+        - action: one of "continue", "repair_plan", "replace_plan", or "fail_desire"
+        - reason: brief explanation for the selected action
+        - plan_steps: required for "repair_plan" and "replace_plan"; omit or return null otherwise
 
         Consider:
-        1. Is this remaining plan still likely to succeed in achieving the original desire '{desire_id}'?
-        2. Are there patterns in the step history suggesting the plan needs adjustment?
-        3. Are there contradictions between beliefs, history, and the plan's assumptions?
-        4. Based on the history of successful and failed steps, should the plan be modified?
+        1. Does the full Plan remain likely to achieve the original desire '{desire_id}'?
+        2. Did completed Plan Steps make valid progress toward the Desire?
+        3. Do failures, contradictions, stale assumptions, or current Beliefs require repair or replacement?
+        4. Use "continue" only when the existing Plan should keep running as-is.
+        5. Use "repair_plan" when the current Plan is mostly sound but needs local changes.
+        6. Use "replace_plan" when the Plan strategy is no longer suitable and should be replanned.
+        7. Use "fail_desire" only when the Desire should be abandoned as infeasible or invalid.
+        8. For "repair_plan", plan_steps should replace the remaining Plan Steps from the current failed/stale step onward.
+        9. For "replace_plan", plan_steps should be a full replacement Plan for the committed Intention.
         """
     )
 

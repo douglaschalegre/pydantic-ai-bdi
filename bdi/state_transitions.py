@@ -212,6 +212,23 @@ def replan_desire_for_intention(
     log_states(agent, ["intentions", "desires"])
 
 
+def fail_desire_for_intention(
+    agent: "BDI",
+    intention: "Intention",
+    *,
+    reason: str,
+) -> None:
+    """Fail an intention's Desire and clear all runnable work for it."""
+    intention.active_plan.status = PlanStatus.FAILED
+    removed_count = _remove_intentions_for_desire(agent, intention.desire_id)
+    update_desire_status(agent, intention.desire_id, DesireStatus.FAILED)
+    print(
+        f"{bcolors.DESIRE}  Desire '{intention.desire_id}' marked FAILED. "
+        f"Removed {removed_count} runnable intention(s). Reason: {reason}{bcolors.ENDC}"
+    )
+    log_states(agent, ["intentions", "desires"])
+
+
 def finalize_current_intention(
     agent: "BDI",
     intention: "Intention",
@@ -236,6 +253,7 @@ __all__ = [
     "all_desires_terminal",
     "assess_desire_satisfaction",
     "complete_intention_and_update_desire",
+    "fail_desire_for_intention",
     "finalize_current_intention",
     "replan_desire_for_intention",
     "remove_intention",

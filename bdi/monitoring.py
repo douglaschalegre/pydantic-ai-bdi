@@ -8,9 +8,10 @@ import traceback
 from typing import TYPE_CHECKING
 from datetime import datetime
 from helper.util import bcolors
-from bdi.schemas import ReconsiderResult
+from bdi.schemas import Plan, PlanStatus, PlanStep, ReconsiderResult
 from bdi.prompts import build_reconsideration_prompt
-from bdi.state_transitions import replan_desire_for_intention
+from bdi.logging import log_states
+from bdi.state_transitions import fail_desire_for_intention, replan_desire_for_intention
 
 if TYPE_CHECKING:
     from bdi.agent import BDI
@@ -59,6 +60,75 @@ def generate_history_context(
     return "\n".join(history_lines)
 
 
+def _format_steps(steps) -> str:
+    if not steps:
+        return "  No Plan Steps."
+    return "\n".join([f"  - {step.description}" for step in steps])
+
+
+def _format_completed_steps(intention: "Intention") -> str:
+    completed = [h for h in intention.active_plan.step_history if h.success]
+    if not completed:
+        return "  No completed Plan Steps."
+
+    return "\n".join(
+        [
+            f"  - Plan Step {h.step_number + 1}: {h.step_description} -> {h.result}"
+            for h in completed
+        ]
+    )
+
+
+def _format_failure_history(intention: "Intention") -> str:
+    failures = [h for h in intention.active_plan.step_history if not h.success]
+    if not failures:
+        return "  No relevant failures recorded."
+
+    return "\n".join(
+        [
+            f"  - Plan Step {h.step_number + 1}: {h.step_description} -> {h.result}"
+            for h in failures
+        ]
+    )
+
+
+def _apply_plan_repair(
+    agent: "BDI",
+    intention: "Intention",
+    repaired_steps: list[PlanStep],
+    *,
+    reason: str,
+) -> None:
+    """Replace remaining Plan Steps while preserving Intention and history."""
+    plan = intention.active_plan
+    plan.steps = plan.steps[: plan.current_step_index] + repaired_steps
+    plan.status = PlanStatus.ACTIVE
+    print(
+        f"{bcolors.INTENTION}  Repaired Plan for desire '{intention.desire_id}' while preserving the active Intention. Reason: {reason}{bcolors.ENDC}"
+    )
+    log_states(agent, ["intentions", "desires"])
+
+
+def _apply_plan_replacement(
+    agent: "BDI",
+    intention: "Intention",
+    replacement_steps: list[PlanStep],
+    *,
+    reason: str,
+) -> None:
+    """Replace the active Plan while preserving Intention and prior history."""
+    previous_history = intention.active_plan.step_history
+    intention.active_plan = Plan(
+        steps=replacement_steps,
+        status=PlanStatus.ACTIVE,
+        step_history=previous_history,
+    )
+    print(
+        f"{bcolors.INTENTION}  Replaced Plan for desire '{intention.desire_id}' while preserving the active Intention. Reason: {reason}{bcolors.ENDC}"
+    )
+    log_states(agent, ["intentions", "desires"])
+
+
 async def reconsider_current_intention(agent: "BDI") -> None:
     """Evaluate if the current intention's remaining plan is still valid.
 
@@ -94,23 +164,16 @@ async def reconsider_current_intention(agent: "BDI") -> None:
         else "  No current beliefs."
     )
 
-    remaining_steps_list = plan.steps[plan.current_step_index :]
-    remaining_steps_text = "\n".join(
-        [f"  - {s.description}" for s in remaining_steps_list]
-    )
-
-    # Get detailed history context for reconsideration
-    history_context = generate_history_context(
-        intention,
-        max_history=5,  # Show more history for reconsideration
-        include_details=True,  # Include detailed information
-    )
+    remaining_steps_text = _format_steps(plan.steps[plan.current_step_index :])
+    completed_steps_text = _format_completed_steps(intention)
+    failure_history_text = _format_failure_history(intention)
 
     reconsider_prompt = build_reconsideration_prompt(
         beliefs_text,
-        history_context,
+        completed_steps_text,
         intention.desire_id,
         remaining_steps_text,
+        failure_history_text,
     )
 
     try:
@@ -122,30 +185,59 @@ async def reconsider_current_intention(agent: "BDI") -> None:
             reconsider_prompt, output_type=ReconsiderResult
         )
 
-        if (
-            reconsider_result
-            and reconsider_result.output
-            and reconsider_result.output.valid
-        ):
+        if not reconsider_result or not reconsider_result.output:
+            action = "continue"
+            reason = "Reconsideration returned no structured result."
+        else:
+            action = reconsider_result.output.action
+            reason = reconsider_result.output.reason or "No reason provided."
+
+        if action == "continue":
+            plan.status = PlanStatus.ACTIVE
             if agent.verbose:
                 print(
-                    f"{bcolors.SYSTEM}  LLM Assessment: Plan remains VALID. Reason: {reconsider_result.output.reason}{bcolors.ENDC}"
+                    f"{bcolors.SYSTEM}  LLM Assessment: Continue Plan. Reason: {reason}{bcolors.ENDC}"
                 )
+        elif action == "repair_plan":
+            print(
+                f"{bcolors.WARNING}  LLM Assessment: {action}. Reason: {reason}{bcolors.ENDC}"
+            )
+            if reconsider_result and reconsider_result.output and reconsider_result.output.plan_steps:
+                _apply_plan_repair(
+                    agent,
+                    intention,
+                    reconsider_result.output.plan_steps,
+                    reason=reason,
+                )
+            else:
+                print(
+                    f"{bcolors.WARNING}  repair_plan returned no Plan Steps; returning Desire to planning.{bcolors.ENDC}"
+                )
+                replan_desire_for_intention(agent, intention, reason=reason)
+        elif action == "replace_plan":
+            print(
+                f"{bcolors.WARNING}  LLM Assessment: {action}. Reason: {reason}{bcolors.ENDC}"
+            )
+            if reconsider_result and reconsider_result.output and reconsider_result.output.plan_steps:
+                _apply_plan_replacement(
+                    agent,
+                    intention,
+                    reconsider_result.output.plan_steps,
+                    reason=reason,
+                )
+            else:
+                print(
+                    f"{bcolors.WARNING}  replace_plan returned no Plan Steps; returning Desire to planning.{bcolors.ENDC}"
+                )
+                replan_desire_for_intention(agent, intention, reason=reason)
+        elif action == "fail_desire":
+            print(
+                f"{bcolors.WARNING}  LLM Assessment: fail_desire. Reason: {reason}{bcolors.ENDC}"
+            )
+            fail_desire_for_intention(agent, intention, reason=reason)
         else:
-            reason = (
-                reconsider_result.output.reason
-                if (
-                    reconsider_result
-                    and reconsider_result.output
-                    and reconsider_result.output.reason
-                )
-                else "LLM assessment indicated invalidity or failed."
-            )
             print(
-                f"{bcolors.WARNING}  LLM Assessment: Plan INVALID. Reason: {reason}{bcolors.ENDC}"
-            )
-            print(
-                f"{bcolors.INTENTION}  Removing invalid intention for desire '{intention.desire_id}'.{bcolors.ENDC}"
+                f"{bcolors.WARNING}  Unknown reconsideration action '{action}'. Replanning conservatively. Reason: {reason}{bcolors.ENDC}"
             )
             replan_desire_for_intention(agent, intention, reason=reason)
 
