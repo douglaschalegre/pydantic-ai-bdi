@@ -3,7 +3,7 @@ title: BDI Lifecycle Regression Coverage
 labels:
   - needs-triage
 type: AFK
-status: draft
+status: completed
 ---
 
 ## What to build
@@ -12,11 +12,11 @@ Add regression coverage and observable lifecycle checks for the refactored BDI f
 
 ## Acceptance criteria
 
-- [ ] Regression tests cover one active Intention with multiple Plan Steps from adoption through completion.
-- [ ] Regression tests cover no reconsideration loop after successful Plan Step progress.
-- [ ] Regression tests cover batch belief update behavior in an execution-like path.
-- [ ] Logs expose enough Desire, Intention, Plan, and Plan Step state to diagnose lifecycle regressions.
-- [ ] Benchmark-relevant regression coverage demonstrates progress toward write and verification phases without repeated pending-state replanning.
+- [x] Regression tests cover one active Intention with multiple Plan Steps from adoption through completion.
+- [x] Regression tests cover no reconsideration loop after successful Plan Step progress.
+- [x] Regression tests cover batch belief update behavior in an execution-like path.
+- [x] Logs expose enough Desire, Intention, Plan, and Plan Step state to diagnose lifecycle regressions.
+- [x] Benchmark-relevant regression coverage demonstrates progress toward write and verification phases without repeated pending-state replanning.
 
 ## Blocked by
 

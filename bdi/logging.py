@@ -393,7 +393,14 @@ def log_states(
             )
             print(f"{bcolors.DESIRE}Desires:\n{desire_str or '  (None)'}{bcolors.ENDC}")
         else:
-            print(f"{bcolors.DESIRE}Desires: {len(agent.desires)} items{bcolors.ENDC}")
+            summaries = [
+                f"Desire '{desire.id}' {desire.status.value}"
+                for desire in agent.desires
+            ]
+            print(
+                f"{bcolors.DESIRE}Desires: {len(agent.desires)} items"
+                f"{(' | ' + ' | '.join(summaries)) if summaries else ''}{bcolors.ENDC}"
+            )
 
     if "intentions" in types:
         if agent.verbose:
@@ -407,14 +414,26 @@ def log_states(
                 f"{bcolors.INTENTION}Intentions:\n{intention_str or '  (None)'}{bcolors.ENDC}"
             )
         else:
-            summaries = [
-                (
-                    f"Desire '{i.desire_id}' Intention '{i.description or '(no description)'}' "
-                    f"Plan {i.active_plan.status.value} "
-                    f"Step {min(i.active_plan.current_step_index + 1, len(i.active_plan.steps))}/{len(i.active_plan.steps)}"
+            summaries = []
+            for intention in agent.intentions:
+                plan = intention.active_plan
+                step_count = len(plan.steps)
+                if step_count:
+                    step_number = min(plan.current_step_index + 1, step_count)
+                    current_step = plan.current_step()
+                    step_description = (
+                        current_step.description if current_step else "(Completed)"
+                    )
+                else:
+                    step_number = 0
+                    step_description = "(No Plan Steps)"
+
+                summaries.append(
+                    f"Desire '{intention.desire_id}' "
+                    f"Intention '{intention.description or '(no description)'}' "
+                    f"Plan {plan.status.value} "
+                    f"Plan Step {step_number}/{step_count}: {step_description}"
                 )
-                for i in agent.intentions
-            ]
             print(
                 f"{bcolors.INTENTION}Intentions: {len(agent.intentions)} items"
                 f"{(' | ' + ' | '.join(summaries)) if summaries else ''}{bcolors.ENDC}"
