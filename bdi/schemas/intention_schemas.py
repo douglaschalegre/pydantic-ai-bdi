@@ -5,19 +5,9 @@ intention steps, step history, and LLM output formats for intention generation.
 """
 
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Literal, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from pydantic import BaseModel, Field
-
-
-PlanDecision = Literal["keep", "merge", "skip"]
-PlanReasonCategory = Literal[
-    "already_completed",
-    "already_planned",
-    "blocked",
-    "new_work_needed",
-    "other",
-]
 
 
 class IntentionStep(BaseModel):
@@ -91,7 +81,7 @@ class Intention(BaseModel):
 
 
 class HighLevelIntention(BaseModel):
-    """High-level intention output from Stage 1 of intention generation."""
+    """High-level intention output from intention generation."""
 
     desire_id: str = Field(
         description="The ID of the desire this intention relates to."
@@ -102,31 +92,9 @@ class HighLevelIntention(BaseModel):
 
 
 class HighLevelIntentionList(BaseModel):
-    """A list of high-level intentions, expected output from Stage 1."""
+    """A list of high-level intentions expected from planning."""
 
     intentions: List[HighLevelIntention]
-
-
-class DetailedStepList(BaseModel):
-    """A list of detailed steps, expected output from Stage 2."""
-
-    steps: List[IntentionStep]
-
-
-class PlanJudgementResult(BaseModel):
-    """Judgement output for deciding whether a new plan adds useful work."""
-
-    decision: PlanDecision = Field(
-        description="keep = keep all steps, merge = keep only non-redundant steps, skip = no further action needed"
-    )
-    reason_category: PlanReasonCategory = Field(
-        description="Structured reason category for observability."
-    )
-    reason: str = Field(description="Short explanation for the judgement decision.")
-    redundant_step_indices: List[int] = Field(
-        default_factory=list,
-        description="1-based step indexes from the proposed plan that are redundant and can be removed.",
-    )
 
 
 __all__ = [
@@ -135,6 +103,4 @@ __all__ = [
     "Intention",
     "HighLevelIntention",
     "HighLevelIntentionList",
-    "DetailedStepList",
-    "PlanJudgementResult",
 ]

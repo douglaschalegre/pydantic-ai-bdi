@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import bdi.execution as execution
-from bdi.schemas import DesireStatus
+from bdi.schemas import DesireSatisfactionResult, DesireStatus
 
 
 @pytest.mark.asyncio
@@ -25,6 +25,9 @@ async def test_execute_intentions_completed_intention_finalizes_desire(stub_agen
         step_descriptions=["step one"],
     )
     intention.current_step = len(intention.steps)
+    stub_agent.queue_run_output(
+        DesireSatisfactionResult(satisfied=True, reason="Already complete")
+    )
 
     result = await execution.execute_intentions(stub_agent)
 
@@ -34,7 +37,7 @@ async def test_execute_intentions_completed_intention_finalizes_desire(stub_agen
 
 
 @pytest.mark.asyncio
-async def test_execute_intentions_exception_marks_failed(monkeypatch, stub_agent) -> None:
+async def test_execute_intentions_exception_requeues_desire(monkeypatch, stub_agent) -> None:
     desire = stub_agent.add_desire(
         desire_id="desire_exception",
         description="Exception path",
@@ -53,7 +56,7 @@ async def test_execute_intentions_exception_marks_failed(monkeypatch, stub_agent
     result = await execution.execute_intentions(stub_agent)
 
     assert result == {"hitl_modified_plan": False, "hitl_updated_beliefs": False}
-    assert desire.status is DesireStatus.FAILED
+    assert desire.status is DesireStatus.PENDING
     assert len(stub_agent.intentions) == 0
     assert len(intention.step_history) == 1
     assert intention.step_history[0].success is False
@@ -83,6 +86,9 @@ async def test_execute_intentions_success_completes_single_step(
         always_success,
     )
     stub_agent.queue_run_output("done")
+    stub_agent.queue_run_output(
+        DesireSatisfactionResult(satisfied=True, reason="Step completed desire")
+    )
 
     result = await execution.execute_intentions(stub_agent)
 

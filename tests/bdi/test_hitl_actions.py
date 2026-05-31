@@ -1,7 +1,7 @@
 import pytest
 
 from bdi.hitl import apply_user_guided_action
-from bdi.schemas import DesireStatus, PlanManipulationDirective
+from bdi.schemas import DesireSatisfactionResult, DesireStatus, PlanManipulationDirective
 
 
 @pytest.mark.asyncio
@@ -16,6 +16,9 @@ async def test_skip_current_step_completes_intention(stub_agent) -> None:
     directive = PlanManipulationDirective(
         manipulation_type="SKIP_CURRENT_STEP",
         user_guidance_summary="Skip this step",
+    )
+    stub_agent.queue_run_output(
+        DesireSatisfactionResult(satisfied=True, reason="Skipped step satisfies desire")
     )
 
     applied_successfully, beliefs_updated = await apply_user_guided_action(

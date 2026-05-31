@@ -91,97 +91,6 @@ def build_planning_stage1_prompt(
     )
 
 
-def build_planning_stage2_prompt(
-    intention_description: str,
-    desire_id: str,
-    beliefs_text: str,
-    existing_plan_context: str,
-) -> str:
-    return dedent(
-        f"""
-        Your task is to create a step-by-step action plan to achieve the following high-level intention:
-        '{intention_description}' (This contributes to overall Desire ID: {desire_id})
-
-        Consider the current beliefs and available tools to formulate the plan.
-        Each step in the plan must be a single, concrete action that *you, the AI agent*, can perform. Steps MUST be one of the following:
-        1. A specific call to an available tool (listed below), including necessary parameters based on context and beliefs.
-        2. An internal information processing or analysis task (e.g., 'Analyze sensor data', 'Summarize report X', 'Compare belief A and B', 'Decide next action based on criteria Y').
-
-        Current Beliefs:
-        {beliefs_text}
-
-        Already Planned Intentions and Steps:
-        {existing_plan_context}
-
-        IMPORTANT: When planning steps, actively use current beliefs:
-        - Skip discovery steps if beliefs already contain the needed information
-        - Use belief values to set initial tool parameters (e.g., if belief contains a path, use it)
-        - Account for constraints or limitations revealed in beliefs (e.g., if a belief indicates something failed, don't retry the same way)
-        - Build upon information already known rather than re-discovering it
-        - Avoid duplicating or conflicting with steps already planned for previous intentions
-        - If prior plans already cover this intention, return an empty steps list
-
-        Available Tools:
-        (The underlying Pydantic AI agent will provide the available tools, including those from MCP, to the LLM.)
-
-        STEP DESCRIPTION GUIDELINES:
-        - Write step descriptions as ACTIONS to perform, not questions to answer (e.g., "Retrieve git commit history" NOT "Check if repository path exists")
-        - For tool calls, describe WHAT the tool will do (e.g., "Use git_log to fetch commit history with max_count=50")
-        - For analysis tasks, describe the OUTPUT expected (e.g., "Extract commit summary from git log results and create presentation outline")
-        - Avoid CHECK/VERIFY steps unless they're truly validation steps with binary success criteria
-
-        Generate a sequence of steps required to execute this intention. Ensure the steps are logical and sequential.
-        Structure the output as a list of steps according to the required format.
-        Focus exclusively on HOW to achieve the intention '{intention_description}' using only the allowed action types.
-        Provide parameters for tool calls based on the context and beliefs.
-
-        We need to prioritize plans that are efficient and avoid unnecessary work, so if the intention can be achieved with fewer steps or by leveraging existing beliefs, prefer that approach.
-        """
-    )
-
-
-def build_plan_coverage_judgement_prompt(
-    intention_description: str,
-    desire_id: str,
-    beliefs_text: str,
-    existing_plan_context: str,
-    proposed_steps_text: str,
-) -> str:
-    return dedent(
-        f"""
-        Evaluate whether this newly proposed intention plan adds necessary work.
-
-        Intention under review:
-        - Desire ID: {desire_id}
-        - Description: {intention_description}
-
-        Current Beliefs:
-        {beliefs_text}
-
-        Already Planned Intentions and Steps:
-        {existing_plan_context}
-
-        Newly Proposed Steps:
-        {proposed_steps_text}
-
-        Decision rules:
-        1. Return decision='skip' when the intention is already satisfied by beliefs or fully covered by prior planned steps.
-        2. Return decision='merge' when only part of the proposed plan is redundant.
-        3. Return decision='keep' when the plan introduces clearly novel required work.
-        4. Use reason_category for observability. Prefer:
-           - already_completed: beliefs indicate task done
-           - already_planned: prior intention steps already cover the work
-           - blocked: constraints prevent progress now
-           - new_work_needed: plan is required and additive
-           - other: none of the above
-        5. For decision='merge', provide redundant_step_indices as 1-based indexes of redundant steps from the newly proposed list.
-        6. For decision='keep' or 'skip', redundant_step_indices can be empty.
-
-        Be conservative: only choose 'skip' when evidence is strong.
-        """
-    )
-
-
 def build_step_belief_extraction_prompt(
     step_description: str,
     step_result: str,
@@ -530,8 +439,6 @@ __all__ = [
     "build_hitl_interpretation_prompt",
     "build_initial_belief_extraction_prompt",
     "build_planning_stage1_prompt",
-    "build_planning_stage2_prompt",
-    "build_plan_coverage_judgement_prompt",
     "build_desire_satisfaction_prompt",
     "build_reconsideration_prompt",
     "build_belief_update_resolution_prompt",

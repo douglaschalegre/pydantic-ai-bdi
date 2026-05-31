@@ -3,7 +3,7 @@
 A modular BDI agent implementation built on Pydantic AI, with support for:
 - Belief management and extraction
 - Desire-driven planning
-- Two-stage intention generation
+- Single-stage intention generation
 - Step-by-step execution with outcome analysis
 - Plan reconsideration and monitoring
 - Human-in-the-loop intervention
@@ -26,7 +26,6 @@ from bdi.schemas import (
     IntentionStep,
     # Also export other useful schemas
     HighLevelIntentionList,
-    DetailedStepList,
     ReconsiderResult,
     BeliefExtractionResult,
     PlanManipulationDirective,
@@ -44,7 +43,6 @@ __all__ = [
     "IntentionStep",
     # Additional schemas
     "HighLevelIntentionList",
-    "DetailedStepList",
     "ReconsiderResult",
     "BeliefExtractionResult",
     "PlanManipulationDirective",

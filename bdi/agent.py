@@ -312,7 +312,7 @@ class BDI(Agent, Generic[T]):
         return result
 
     async def generate_intentions_from_desires(self) -> None:
-        """Generate intentions from desires using two-stage LLM process."""
+        """Generate high-level intentions from desires."""
         await generate_intentions_from_desires(self)
 
     async def execute_intentions(self) -> dict:

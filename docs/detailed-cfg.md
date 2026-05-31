@@ -6,9 +6,8 @@ graph TD
     E -->|Yes| F[generate_intentions_from_desires]
     E -->|No| G{Intentions exist?}
     
-    F --> F1[Stage 1: Generate high-level intentions]
-    F1 --> F2[Stage 2: Generate detailed steps]
-    F2 --> F3[Update agent with intentions]
+    F --> F1[Generate high-level intentions]
+    F1 --> F3[Update agent with single-step intentions]
     F3 --> G
     
     G -->|Yes| H[execute_intentions]

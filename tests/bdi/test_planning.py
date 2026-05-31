@@ -1,42 +1,7 @@
-from typing import Literal
-
 import pytest
 
 from bdi.planning import generate_intentions_from_desires
-from bdi.schemas import (
-    DesireStatus,
-    DetailedStepList,
-    IntentionStep,
-    PlanJudgementResult,
-)
-
-
-def _queue_stage2_with_judgement(
-    stub_agent,
-    *,
-    step_descriptions: list[str],
-    decision: Literal["keep", "merge", "skip"] = "keep",
-    reason_category: Literal[
-        "already_completed",
-        "already_planned",
-        "blocked",
-        "new_work_needed",
-        "other",
-    ] = "new_work_needed",
-    reason: str = "This introduces required work.",
-) -> None:
-    stub_agent.queue_run_output(
-        DetailedStepList(
-            steps=[IntentionStep(description=description) for description in step_descriptions]
-        )
-    )
-    stub_agent.queue_run_output(
-        PlanJudgementResult(
-            decision=decision,
-            reason_category=reason_category,
-            reason=reason,
-        )
-    )
+from bdi.schemas import DesireStatus, HighLevelIntention, HighLevelIntentionList
 
 
 @pytest.mark.asyncio
@@ -52,93 +17,82 @@ async def test_explicit_intentions_target_first_actionable_desire(stub_agent) ->
         status=DesireStatus.ACTIVE,
     )
     stub_agent.initial_intention_guidance = ["Generate report"]
-    stub_agent.queue_run_output(
-        DetailedStepList(steps=[IntentionStep(description="Collect inputs")])
-    )
 
     await generate_intentions_from_desires(stub_agent)
 
     assert len(stub_agent.intentions) == 1
-    assert stub_agent.intentions[0].desire_id == active_desire.id
+    intention = stub_agent.intentions[0]
+    assert intention.desire_id == active_desire.id
+    assert intention.description == "Generate report"
+    assert [step.description for step in intention.steps] == ["Generate report"]
+    assert stub_agent.run_calls == []
 
 
 @pytest.mark.asyncio
-async def test_planning_stage2_uses_prior_plan_context(stub_agent) -> None:
-    stub_agent.add_desire(
+async def test_stage1_generation_creates_single_step_high_level_intentions(
+    stub_agent,
+) -> None:
+    desire = stub_agent.add_desire(
         desire_id="desire_1",
-        description="Do the work",
-        status=DesireStatus.ACTIVE,
+        description="Deliver report",
+        status=DesireStatus.PENDING,
     )
-    stub_agent.initial_intention_guidance = ["First intention", "Second intention"]
-
-    _queue_stage2_with_judgement(
-        stub_agent,
-        step_descriptions=["Collect repository metadata"],
-    )
-    _queue_stage2_with_judgement(
-        stub_agent,
-        step_descriptions=["Generate architecture summary"],
+    stub_agent.queue_run_output(
+        HighLevelIntentionList(
+            intentions=[
+                HighLevelIntention(
+                    desire_id=desire.id,
+                    description="Collect data",
+                ),
+                HighLevelIntention(
+                    desire_id=desire.id,
+                    description="Summarize findings",
+                ),
+            ]
+        )
     )
 
     await generate_intentions_from_desires(stub_agent)
 
-    stage2_run_calls = [
-        call for call in stub_agent.run_calls if call["output_type"] is DetailedStepList
+    assert [call["output_type"] for call in stub_agent.run_calls] == [
+        HighLevelIntentionList
     ]
-    stage2_prompt_for_second_intention = stage2_run_calls[1]["prompt"]
-    assert "Collect repository metadata" in stage2_prompt_for_second_intention
+    assert len(stub_agent.intentions) == 2
+    assert [intention.description for intention in stub_agent.intentions] == [
+        "Collect data",
+        "Summarize findings",
+    ]
+    assert [len(intention.steps) for intention in stub_agent.intentions] == [1, 1]
+    assert [intention.steps[0].description for intention in stub_agent.intentions] == [
+        "Collect data",
+        "Summarize findings",
+    ]
+    assert desire.status is DesireStatus.ACTIVE
 
 
 @pytest.mark.asyncio
-async def test_planning_skips_intention_when_already_covered(stub_agent) -> None:
-    stub_agent.add_desire(
+async def test_planning_deduplicates_high_level_intentions(stub_agent) -> None:
+    desire = stub_agent.add_desire(
         desire_id="desire_1",
         description="Deliver report",
         status=DesireStatus.ACTIVE,
     )
-    stub_agent.initial_intention_guidance = ["Collect data", "Collect data again"]
-
-    _queue_stage2_with_judgement(
-        stub_agent,
-        step_descriptions=["Collect repository metadata"],
-        reason="First plan is necessary.",
-    )
-    _queue_stage2_with_judgement(
-        stub_agent,
-        step_descriptions=["Collect repository metadata"],
-        decision="skip",
-        reason_category="already_planned",
-        reason="Covered by previous intention.",
+    stub_agent.queue_run_output(
+        HighLevelIntentionList(
+            intentions=[
+                HighLevelIntention(
+                    desire_id=desire.id,
+                    description="Collect data",
+                ),
+                HighLevelIntention(
+                    desire_id=desire.id,
+                    description="  collect   data  ",
+                ),
+            ]
+        )
     )
 
     await generate_intentions_from_desires(stub_agent)
 
     assert len(stub_agent.intentions) == 1
     assert stub_agent.intentions[0].description == "Collect data"
-
-
-@pytest.mark.asyncio
-async def test_planning_deduplicates_steps_across_intentions(stub_agent) -> None:
-    stub_agent.add_desire(
-        desire_id="desire_1",
-        description="Deliver report",
-        status=DesireStatus.ACTIVE,
-    )
-    stub_agent.initial_intention_guidance = ["Collect data", "Analyze data"]
-
-    _queue_stage2_with_judgement(
-        stub_agent,
-        step_descriptions=["Collect repository metadata"],
-        reason="First plan is necessary.",
-    )
-    _queue_stage2_with_judgement(
-        stub_agent,
-        step_descriptions=["Collect repository metadata", "Summarize findings"],
-        reason="Includes new work.",
-    )
-
-    await generate_intentions_from_desires(stub_agent)
-
-    assert len(stub_agent.intentions) == 2
-    assert len(stub_agent.intentions[1].steps) == 1
-    assert stub_agent.intentions[1].steps[0].description == "Summarize findings"
