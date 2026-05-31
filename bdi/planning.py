@@ -15,7 +15,8 @@ from bdi.schemas import (
     HighLevelIntention,
     HighLevelIntentionList,
     DesireStatus,
-    IntentionStep,
+    Plan,
+    PlanStep,
 )
 from bdi.logging import log_states
 from bdi.prompts import build_planning_stage1_prompt
@@ -67,7 +68,9 @@ def _build_intention(high_level_intention: HighLevelIntention) -> Intention:
     return Intention(
         desire_id=high_level_intention.desire_id,
         description=high_level_intention.description,
-        steps=[IntentionStep(description=high_level_intention.description)],
+        active_plan=Plan(
+            steps=[PlanStep(description=high_level_intention.description)],
+        ),
     )
 
 

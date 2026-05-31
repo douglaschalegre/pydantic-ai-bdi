@@ -10,7 +10,7 @@ A modular BDI agent implementation built on Pydantic AI, with support for:
 
 Main exports:
 - BDI: The main agent class
-- Belief, BeliefSet, Desire, DesireStatus, Intention, IntentionStep: Core schemas
+- Belief, BeliefSet, Desire, DesireStatus, Intention, Plan: Core schemas
 """
 
 # Main agent class
@@ -24,6 +24,10 @@ from bdi.schemas import (
     DesireStatus,
     Intention,
     IntentionStep,
+    Plan,
+    PlanStatus,
+    PlanStep,
+    PlanStepHistory,
     # Also export other useful schemas
     HighLevelIntentionList,
     ReconsiderResult,
@@ -41,6 +45,10 @@ __all__ = [
     "DesireStatus",
     "Intention",
     "IntentionStep",
+    "Plan",
+    "PlanStatus",
+    "PlanStep",
+    "PlanStepHistory",
     # Additional schemas
     "HighLevelIntentionList",
     "ReconsiderResult",

@@ -176,9 +176,10 @@ async def bdi_cycle(agent: "BDI") -> str:
             )
     elif agent.intentions:  # Check if an intention still exists
         current_intention = agent.intentions[0]
+        current_plan = current_intention.active_plan
         # Only reconsider if the intention wasn't just completed/removed by execute_intentions
-        if not current_intention.steps or current_intention.current_step < len(
-            current_intention.steps
+        if not current_plan.steps or current_plan.current_step_index < len(
+            current_plan.steps
         ):
             await reconsider_current_intention(agent)
         else:

@@ -13,7 +13,7 @@ import json
 from helper.util import bcolors
 from bdi.belief_updates import update_beliefs_from_hitl_guidance
 from bdi.schemas import (
-    IntentionStep,
+    PlanStep,
     PlanManipulationDirective,
     DesireStatus,
 )
@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 def build_failure_context(
     agent: "BDI",
     intention: "Intention",
-    failed_step: IntentionStep,
+    failed_step: PlanStep,
     step_result: Optional["AgentRunResult"],
 ) -> Dict[str, Any]:
     """Gather all relevant information about a step failure into a structured dictionary.
@@ -43,17 +43,20 @@ def build_failure_context(
     Args:
         agent: The BDI agent instance
         intention: The current intention being executed
-        failed_step: The step that failed
+        failed_step: The Plan Step that failed
         step_result: The result from the failed step execution
 
     Returns:
         Dictionary containing comprehensive failure context
     """
+    plan = intention.active_plan
     context = {
         "desire_id": intention.desire_id,
+        "intention_description": intention.description,
+        "plan_status": plan.status.value,
         "failed_step_description": failed_step.description,
-        "failed_step_number": intention.current_step + 1,
-        "total_steps_in_plan": len(intention.steps),
+        "failed_step_number": plan.current_step_index + 1,
+        "total_steps_in_plan": len(plan.steps),
         "is_tool_call": failed_step.is_tool_call,
         "tool_name": failed_step.tool_name if failed_step.is_tool_call else None,
         "tool_params": failed_step.tool_params
@@ -62,7 +65,7 @@ def build_failure_context(
         "step_result_output": step_result.output
         if step_result and hasattr(step_result, "output")
         else "No result data",
-        "llm_step_assessment": "Step was deemed a FAILURE by internal analysis.",
+        "llm_step_assessment": "Plan Step was deemed a FAILURE by internal analysis.",
         "current_beliefs": {
             name: {
                 "value": b.value,
@@ -81,7 +84,7 @@ def build_failure_context(
                 "tool_name": s.tool_name,
                 "tool_params": s.tool_params,
             }
-            for s in intention.steps[intention.current_step + 1 :]
+            for s in plan.steps[plan.current_step_index + 1 :]
         ],
         "original_failed_step_object": failed_step.model_dump(),
     }
@@ -104,14 +107,14 @@ def present_context_to_user(failure_context: Dict[str, Any]) -> None:
         f"{bcolors.FAIL}------------------------------------------------------------{bcolors.ENDC}"
     )
     print(
-        f"Failed Step ({failure_context['failed_step_number']}/{failure_context['total_steps_in_plan']}): {failure_context['failed_step_description']}"
+        f"Failed Plan Step ({failure_context['failed_step_number']}/{failure_context['total_steps_in_plan']}): {failure_context['failed_step_description']}"
     )
     if failure_context["is_tool_call"]:
         print(
             f"  Tool Call: {failure_context['tool_name']}({json.dumps(failure_context['tool_params']) if failure_context['tool_params'] else '{}'})"
         )
 
-    print(f"Step Result Data: {failure_context['step_result_output']}")
+    print(f"Plan Step Result Data: {failure_context['step_result_output']}")
 
     print(f"Agent Assessment: {failure_context['llm_step_assessment']}")
 
@@ -316,7 +319,8 @@ async def apply_user_guided_action(
         Tuple of (applied_successfully, beliefs_updated)
     """
 
-    idx = intention.current_step
+    plan = intention.active_plan
+    idx = plan.current_step_index
     applied_successfully = False
     beliefs_updated = False
 
@@ -341,8 +345,8 @@ async def apply_user_guided_action(
             return True
 
         async def _handle_modify_current_and_retry() -> bool:
-            if directive.current_step_modifications and idx < len(intention.steps):
-                step_to_modify = intention.steps[idx]
+            if directive.current_step_modifications and idx < len(plan.steps):
+                step_to_modify = plan.steps[idx]
                 for (
                     field_name,
                     new_value,
@@ -357,7 +361,7 @@ async def apply_user_guided_action(
                 log_states(
                     agent,
                     ["intentions"],
-                    message=f"Intention step {idx} modified by user guidance.",
+                    message=f"Plan Step {idx + 1} modified by user guidance.",
                 )
                 return True
 
@@ -374,29 +378,29 @@ async def apply_user_guided_action(
                 return False
 
             new_steps_list = [
-                IntentionStep(**step_def)
+                PlanStep(**step_def)
                 for step_def in directive.new_steps_definition
             ]
 
             if manip_type == "REPLACE_CURRENT_STEP_WITH_NEW":
-                if idx >= len(intention.steps):
+                if idx >= len(plan.steps):
                     raise IndexError(
                         "Invalid step index for REPLACE_CURRENT_STEP_WITH_NEW"
                     )
-                intention.steps.pop(idx)
+                plan.steps.pop(idx)
                 for i, new_step in enumerate(new_steps_list):
-                    intention.steps.insert(idx + i, new_step)
+                    plan.steps.insert(idx + i, new_step)
             elif manip_type == "INSERT_NEW_STEPS_BEFORE_CURRENT":
                 for i, new_step in enumerate(new_steps_list):
-                    intention.steps.insert(idx + i, new_step)
+                    plan.steps.insert(idx + i, new_step)
             elif manip_type == "INSERT_NEW_STEPS_AFTER_CURRENT":
                 insert_point = idx + 1
                 for i, new_step in enumerate(new_steps_list):
-                    intention.steps.insert(insert_point + i, new_step)
+                    plan.steps.insert(insert_point + i, new_step)
             elif manip_type == "REPLACE_REMAINDER_OF_PLAN":
-                intention.steps = intention.steps[:idx]
-                intention.steps.extend(new_steps_list)
-                if not intention.steps:
+                plan.steps = plan.steps[:idx]
+                plan.steps.extend(new_steps_list)
+                if not plan.steps:
                     print(
                         f"{bcolors.WARNING}  Plan became empty after REPLACE_REMAINDER. Aborting intention.{bcolors.ENDC}"
                     )
@@ -411,14 +415,17 @@ async def apply_user_guided_action(
             return True
 
         async def _handle_skip_current_step() -> bool:
-            if idx >= len(intention.steps):
+            if idx >= len(plan.steps):
                 print(
                     f"{bcolors.WARNING}  Cannot skip, already at end of plan or invalid index.{bcolors.ENDC}"
                 )
                 return False
 
-            intention.increment_current_step(lambda **kwargs: log_states(agent, **kwargs))
-            if intention.current_step >= len(intention.steps):
+            plan.advance_current_step(
+                lambda **kwargs: log_states(agent, **kwargs),
+                desire_id=intention.desire_id,
+            )
+            if plan.is_complete():
                 print(
                     f"{bcolors.INTENTION}  Skipping step completed intention for desire '{intention.desire_id}'.{bcolors.ENDC}"
                 )
@@ -483,7 +490,7 @@ async def apply_user_guided_action(
 async def human_in_the_loop_intervention(
     agent: "BDI",
     intention: "Intention",
-    failed_step: IntentionStep,
+    failed_step: PlanStep,
     step_result: Optional["AgentRunResult"],
 ) -> Tuple[bool, bool]:
     """Orchestrate the full human-in-the-loop interaction when a step fails.
@@ -491,7 +498,7 @@ async def human_in_the_loop_intervention(
     Args:
         agent: The BDI agent instance
         intention: The current intention being executed
-        failed_step: The step that failed
+        failed_step: The Plan Step that failed
         step_result: The result from the failed step
 
     Returns:

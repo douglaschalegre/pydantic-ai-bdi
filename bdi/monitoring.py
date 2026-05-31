@@ -20,24 +20,25 @@ if TYPE_CHECKING:
 def generate_history_context(
     intention: "Intention", max_history: int = 3, include_details: bool = False
 ) -> str:
-    """Generate a formatted context string from the intention's step history.
+    """Generate a formatted context string from the active Plan's step history.
 
     Args:
-        intention: The Intention object containing the step history
+        intention: The Intention object owning the Plan Step History
         max_history: Maximum number of recent steps to include (default: 3)
         include_details: Whether to include detailed information about each step (default: False)
 
     Returns:
         A formatted string containing the step history context
     """
-    if not intention.step_history:
+    plan = intention.active_plan
+    if not plan.step_history:
         return "No previous steps executed."
 
-    recent_history = intention.step_history[-max_history:]
+    recent_history = plan.step_history[-max_history:]
 
     history_lines = []
     for h in recent_history:
-        step_info = f"Step {h.step_number}: {h.step_description} - {'Success' if h.success else 'Failed'}"
+        step_info = f"Plan Step {h.step_number + 1}: {h.step_description} - {'Success' if h.success else 'Failed'}"
 
         if include_details:
             details = [
@@ -73,8 +74,9 @@ async def reconsider_current_intention(agent: "BDI") -> None:
         return
 
     intention = agent.intentions[0]
+    plan = intention.active_plan
 
-    if intention.current_step >= len(intention.steps):
+    if plan.is_complete():
         return
 
     print(
@@ -92,7 +94,7 @@ async def reconsider_current_intention(agent: "BDI") -> None:
         else "  No current beliefs."
     )
 
-    remaining_steps_list = intention.steps[intention.current_step :]
+    remaining_steps_list = plan.steps[plan.current_step_index :]
     remaining_steps_text = "\n".join(
         [f"  - {s.description}" for s in remaining_steps_list]
     )

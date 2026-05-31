@@ -296,7 +296,7 @@ def build_reconsideration_prompt(
         Current Agent Beliefs:
         {beliefs_text}
 
-        Step History:
+        Plan Step History:
         {history_context}
 
         Remaining Plan Steps (for Desire ID '{desire_id}'):
@@ -330,12 +330,14 @@ def build_hitl_interpretation_prompt(
 
         Current Failure Context:
         - Desire ID: {failure_context["desire_id"]}
-        - Failed Step ({failure_context["failed_step_number"]}/{failure_context["total_steps_in_plan"]}): "{failure_context["failed_step_description"]}"
-        - Original Failed Step Object: {json.dumps(failure_context["original_failed_step_object"])}
+        - Intention: {failure_context.get("intention_description") or "(no description)"}
+        - Plan Status: {failure_context.get("plan_status", "unknown")}
+        - Failed Plan Step ({failure_context["failed_step_number"]}/{failure_context["total_steps_in_plan"]}): "{failure_context["failed_step_description"]}"
+        - Original Failed Plan Step Object: {json.dumps(failure_context["original_failed_step_object"])}
         - Is Tool Call: {failure_context["is_tool_call"]}
         - Tool Name: {failure_context["tool_name"] if failure_context["is_tool_call"] else "N/A"}
         - Tool Params Used: {json.dumps(failure_context["tool_params"]) if failure_context["is_tool_call"] and failure_context["tool_params"] else "N/A"}
-        - Step Result Data: {json.dumps(failure_context["step_result_output"])}
+        - Plan Step Result Data: {json.dumps(failure_context["step_result_output"])}
         - Current Beliefs: {json.dumps(failure_context["current_beliefs"])}
         - Remaining Plan Steps (after failed one): {json.dumps(failure_context["remaining_plan_steps"])}
 
@@ -360,7 +362,7 @@ def build_hitl_interpretation_prompt(
 
         Plan Manipulation:
         4. If the user suggests modifying the current step, populate 'current_step_modifications' with a dictionary of changes. For tool calls, this is often a new 'tool_params' dictionary. For descriptive steps, it might be a new 'description'.
-        5. If the user suggests new steps, populate 'new_steps_definition' with a list of dictionaries. Each dictionary must conform to the IntentionStep schema (fields: description, is_tool_call, tool_name, tool_params).
+        5. If the user suggests new steps, populate 'new_steps_definition' with a list of dictionaries. Each dictionary must conform to the PlanStep schema (fields: description, is_tool_call, tool_name, tool_params).
            If generating tool calls, ensure 'tool_name' is valid from the available tools and 'tool_params' are appropriate.
 
         Summary:

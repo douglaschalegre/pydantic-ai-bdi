@@ -29,6 +29,12 @@ from bdi.schemas.intention_schemas import (
     HighLevelIntention,
     HighLevelIntentionList,
 )
+from bdi.schemas.plan_schemas import (
+    Plan,
+    PlanStatus,
+    PlanStep,
+    PlanStepHistory,
+)
 
 # Reconsideration schemas
 from bdi.schemas.reconsider_schemas import (
@@ -57,6 +63,10 @@ __all__ = [
     # Intention schemas
     "IntentionStep",
     "StepHistory",
+    "Plan",
+    "PlanStatus",
+    "PlanStep",
+    "PlanStepHistory",
     "Intention",
     "HighLevelIntention",
     "HighLevelIntentionList",

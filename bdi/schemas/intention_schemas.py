@@ -1,83 +1,27 @@
 """Intention-related schemas for the BDI agent.
 
-This module contains data models for representing intentions (committed plans),
-intention steps, step history, and LLM output formats for intention generation.
+This module contains data models for representing intentions as commitments to
+desires, plus LLM output formats for intention generation.
 """
 
-from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional
+from typing import List
 
 from pydantic import BaseModel, Field
 
-
-class IntentionStep(BaseModel):
-    """A single step within an intention."""
-
-    description: str = Field(
-        description="Detailed description of the step (HOW to perform it). Can be natural language or a tool call hint."
-    )
-    is_tool_call: bool = Field(
-        default=False,
-        description="Set to true if this step involves calling a specific tool.",
-    )
-    tool_name: Optional[str] = Field(
-        default=None,
-        description="The name of the tool to call, if is_tool_call is true.",
-    )
-    tool_params: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Parameters for the tool call, if is_tool_call is true.",
-    )
-
-
-class StepHistory(BaseModel):
-    """Tracks the history of executed steps and their outcomes."""
-
-    step_description: str
-    step_number: int
-    result: str
-    success: bool
-    timestamp: float
-    beliefs_updated: Dict[str, Any]
+from bdi.schemas.plan_schemas import IntentionStep, Plan, StepHistory
 
 
 class Intention(BaseModel):
-    """Represents a committed plan of action (sequence of steps) to achieve a desire."""
+    """Represents commitment to a Desire and owns the active executable Plan."""
 
     desire_id: str
     description: str | None = Field(
         default=None,
-        description="High-level intention description (WHAT to achieve), separate from current executing step.",
+        description="High-level intention description (WHAT to achieve), separate from the executing Plan.",
     )
-    steps: List[IntentionStep]
-    current_step: int = 0
-    step_history: List[StepHistory] = Field(default_factory=list)
-
-    def increment_current_step(self, logger: Callable):
-        self.current_step += 1
-        logger(
-            types=["intentions"],
-            message=f"Intention for desire '{self.desire_id}' advanced to step {self.current_step}",
-        )
-
-    def add_to_history(
-        self,
-        step: IntentionStep,
-        result: str,
-        success: bool,
-        beliefs_updated: Dict[str, Any],
-    ):
-        """Adds a step execution to the history."""
-        self.step_history.append(
-            StepHistory(
-                step_description=step.description,
-                step_number=self.current_step,
-                result=result,
-                success=success,
-                timestamp=datetime.now().timestamp(),
-                beliefs_updated=beliefs_updated,
-            )
-        )
+    active_plan: Plan = Field(
+        description="The executable strategy currently owned by this Intention."
+    )
 
 
 class HighLevelIntention(BaseModel):
@@ -100,6 +44,7 @@ class HighLevelIntentionList(BaseModel):
 __all__ = [
     "IntentionStep",
     "StepHistory",
+    "Plan",
     "Intention",
     "HighLevelIntention",
     "HighLevelIntentionList",

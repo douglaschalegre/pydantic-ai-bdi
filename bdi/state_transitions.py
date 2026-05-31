@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Literal
 from helper.util import bcolors
 from bdi.logging import format_beliefs_for_context, log_states
 from bdi.prompts import build_desire_satisfaction_prompt
-from bdi.schemas import DesireSatisfactionResult, DesireStatus
+from bdi.schemas import DesireSatisfactionResult, DesireStatus, PlanStatus
 
 if TYPE_CHECKING:
     from bdi.agent import BDI
@@ -87,14 +87,15 @@ def _remove_intentions_for_desire(agent: "BDI", desire_id: str) -> int:
 
 
 def _format_intention_history(intention: "Intention") -> str:
-    if not intention.step_history:
+    plan = intention.active_plan
+    if not plan.step_history:
         return "No step history was recorded for this completed Intention."
 
     lines: list[str] = []
-    for history in intention.step_history:
+    for history in plan.step_history:
         status = "succeeded" if history.success else "failed"
         lines.append(
-            f"- Step {history.step_number + 1}: {history.step_description} ({status})"
+            f"- Plan Step {history.step_number + 1}: {history.step_description} ({status})"
         )
         lines.append(f"  Result: {history.result}")
     return "\n".join(lines)
@@ -106,15 +107,16 @@ def _format_remaining_intentions(intentions: list["Intention"]) -> str:
 
     lines: list[str] = []
     for index, intention in enumerate(intentions, start=1):
+        plan = intention.active_plan
         lines.append(
             f"{index}. {intention.description or '(no description)'}"
         )
-        remaining_steps = intention.steps[intention.current_step :]
+        remaining_steps = plan.steps[plan.current_step_index :]
         if not remaining_steps:
             lines.append("   - No remaining steps.")
             continue
         for step_index, step in enumerate(remaining_steps, start=1):
-            lines.append(f"   - Step {step_index}: {step.description}")
+            lines.append(f"   - Plan Step {step_index}: {step.description}")
     return "\n".join(lines)
 
 
@@ -200,6 +202,7 @@ def replan_desire_for_intention(
     reason: str,
 ) -> None:
     """Clear runnable work for an intention's Desire and return it to planning."""
+    intention.active_plan.status = PlanStatus.FAILED
     removed_count = _remove_intentions_for_desire(agent, intention.desire_id)
     update_desire_status(agent, intention.desire_id, DesireStatus.PENDING)
     print(

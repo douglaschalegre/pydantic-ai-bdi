@@ -33,15 +33,15 @@ class PlanManipulationDirective(BaseModel):
     current_step_modifications: Optional[Dict[str, Any]] = Field(
         None,
         description="Modifications for the current step if manipulation_type is 'MODIFY_CURRENT_AND_RETRY'. "
-        "This could be a dictionary to update fields of the IntentionStep model, "
+        "This could be a dictionary to update fields of the PlanStep model, "
         "e.g., {'tool_params': {'new_param': 'value'}, 'description': 'new step description'}.",
     )
 
     new_steps_definition: Optional[List[Dict[str, Any]]] = Field(
         None,
         description="Definitions for new steps if manipulation_type involves adding/replacing steps. "
-        "Each dictionary in the list should conform to the IntentionStep schema "
-        "and will be used to create new IntentionStep objects.",
+        "Each dictionary in the list should conform to the PlanStep schema "
+        "and will be used to create new PlanStep objects.",
     )
 
     beliefs_to_update: Optional[Dict[str, Dict[str, Any]]] = Field(

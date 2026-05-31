@@ -1,7 +1,12 @@
 import pytest
 
 from bdi.planning import generate_intentions_from_desires
-from bdi.schemas import DesireStatus, HighLevelIntention, HighLevelIntentionList
+from bdi.schemas import (
+    DesireStatus,
+    HighLevelIntention,
+    HighLevelIntentionList,
+    PlanStatus,
+)
 
 
 @pytest.mark.asyncio
@@ -24,7 +29,10 @@ async def test_explicit_intentions_target_first_actionable_desire(stub_agent) ->
     intention = stub_agent.intentions[0]
     assert intention.desire_id == active_desire.id
     assert intention.description == "Generate report"
-    assert [step.description for step in intention.steps] == ["Generate report"]
+    assert intention.active_plan.status is PlanStatus.ACTIVE
+    assert [step.description for step in intention.active_plan.steps] == [
+        "Generate report"
+    ]
     assert stub_agent.run_calls == []
 
 
@@ -62,10 +70,19 @@ async def test_stage1_generation_creates_single_step_high_level_intentions(
         "Collect data",
         "Summarize findings",
     ]
-    assert [len(intention.steps) for intention in stub_agent.intentions] == [1, 1]
-    assert [intention.steps[0].description for intention in stub_agent.intentions] == [
-        "Collect data",
-        "Summarize findings",
+    assert [
+        len(intention.active_plan.steps) for intention in stub_agent.intentions
+    ] == [
+        1,
+        1,
+    ]
+    assert [
+        intention.active_plan.steps[0].description
+        for intention in stub_agent.intentions
+    ] == ["Collect data", "Summarize findings"]
+    assert [intention.active_plan.status for intention in stub_agent.intentions] == [
+        PlanStatus.ACTIVE,
+        PlanStatus.ACTIVE,
     ]
     assert desire.status is DesireStatus.ACTIVE
 

@@ -1,6 +1,6 @@
 from collections import deque
 
-from bdi.schemas import DesireStatus, Intention, IntentionStep
+from bdi.schemas import DesireStatus, Intention, Plan, PlanStep
 from bdi.state_transitions import (
     finalize_current_intention,
     remove_intention,
@@ -24,15 +24,15 @@ def test_update_desire_status_updates_matching_desire(stub_agent) -> None:
 def test_remove_intention_reports_origin(stub_agent) -> None:
     current = Intention(
         desire_id="desire_current",
-        steps=[IntentionStep(description="current step")],
+        active_plan=Plan(steps=[PlanStep(description="current step")]),
     )
     queued = Intention(
         desire_id="desire_queued",
-        steps=[IntentionStep(description="queued step")],
+        active_plan=Plan(steps=[PlanStep(description="queued step")]),
     )
     missing = Intention(
         desire_id="desire_missing",
-        steps=[IntentionStep(description="missing step")],
+        active_plan=Plan(steps=[PlanStep(description="missing step")]),
     )
     stub_agent.intentions = deque([current, queued])
 

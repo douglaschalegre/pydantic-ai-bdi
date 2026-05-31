@@ -1,20 +1,18 @@
 from bdi.schemas import (
     BeliefExtractionResult,
     ExtractedBelief,
-    Intention,
-    IntentionStep,
-    StepHistory,
+    Plan,
+    PlanStep,
+    PlanStepHistory,
 )
 
 
-def test_intention_step_history_isolated_per_instance() -> None:
-    first = Intention(desire_id="desire_a", steps=[IntentionStep(description="step a")])
-    second = Intention(
-        desire_id="desire_b", steps=[IntentionStep(description="step b")]
-    )
+def test_plan_step_history_isolated_per_instance() -> None:
+    first = Plan(steps=[PlanStep(description="step a")])
+    second = Plan(steps=[PlanStep(description="step b")])
 
     first.step_history.append(
-        StepHistory(
+        PlanStepHistory(
             step_description="step a",
             step_number=0,
             result="ok",

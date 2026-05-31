@@ -38,7 +38,7 @@ async def test_failed_step_retry_reuses_analysis_extracted_beliefs(
 
     step_result, step_succeeded, retry_ctx, early_return = (
         await execution._run_step_with_retries(
-            stub_agent, intention, intention.steps[0]
+            stub_agent, intention, intention.active_plan.steps[0]
         )
     )
 

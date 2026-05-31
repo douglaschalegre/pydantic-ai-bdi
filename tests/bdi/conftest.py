@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from bdi.schemas import BeliefSet, Desire, DesireStatus, Intention, IntentionStep
+from bdi.schemas import BeliefSet, Desire, DesireStatus, Intention, Plan, PlanStep
 
 
 class StubBDIAgent:
@@ -47,8 +47,10 @@ class StubBDIAgent:
         intention = Intention(
             desire_id=desire_id,
             description=f"Intention for {desire_id}",
-            steps=[IntentionStep(description=s) for s in step_descriptions],
-            current_step=current_step,
+            active_plan=Plan(
+                steps=[PlanStep(description=s) for s in step_descriptions],
+                current_step_index=current_step,
+            ),
         )
         self.intentions = deque([intention])
         return intention

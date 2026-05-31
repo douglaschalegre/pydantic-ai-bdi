@@ -12,7 +12,12 @@ import json
 from types import SimpleNamespace
 
 from helper.util import bcolors
-from bdi.schemas import IntentionStep, BeliefExtractionResult, StepAssessmentResult
+from bdi.schemas import (
+    PlanStatus,
+    PlanStep,
+    BeliefExtractionResult,
+    StepAssessmentResult,
+)
 from bdi.errors import is_validation_output_error
 from bdi.belief_updates import update_beliefs_from_step_extraction
 from bdi.logging import log_states, format_beliefs_for_context
@@ -70,7 +75,7 @@ class StepRetryContext:
 
 async def extract_relevant_beliefs_from_result(
     agent: "BDI",
-    step: IntentionStep,
+    step: PlanStep,
     result: Optional["AgentRunResult"],
     step_success: bool,
 ) -> List[Dict[str, Any]]:
@@ -80,7 +85,7 @@ async def extract_relevant_beliefs_from_result(
 
     Args:
         agent: The BDI agent instance
-        step: The IntentionStep that was executed
+        step: The PlanStep that was executed
         result: The result returned by the agent's run method
         step_success: Whether the step was assessed as successful
 
@@ -144,7 +149,7 @@ async def extract_relevant_beliefs_from_result(
 
 async def analyze_step_outcome_and_update_beliefs(
     agent: "BDI",
-    step: IntentionStep,
+    step: PlanStep,
     result: Optional["AgentRunResult"],
     extracted_beliefs_out: Optional[List[Dict[str, Any]]] = None,
 ) -> bool:
@@ -152,7 +157,7 @@ async def analyze_step_outcome_and_update_beliefs(
 
     Args:
         agent: The BDI agent instance
-        step: The IntentionStep that was executed
+        step: The PlanStep that was executed
         result: The result returned by the base Agent's run method
 
     Returns:
@@ -271,13 +276,14 @@ async def analyze_step_outcome_and_update_beliefs(
     # Update the belief set with extracted beliefs
     if extracted_beliefs:
         intention = agent.intentions[0]
+        plan = intention.active_plan
         print(
             f"{bcolors.BELIEF}  Processing {len(extracted_beliefs)} extracted belief(s).{bcolors.ENDC}"
         )
         update_stats = await update_beliefs_from_step_extraction(
             agent,
             extracted_beliefs,
-            source=f"step_{intention.current_step + 1}_{step.description[:30]}",
+            source=f"plan_step_{plan.current_step_index + 1}_{step.description[:30]}",
         )
         if agent.verbose:
             print(
@@ -387,7 +393,7 @@ def _extract_latest_tool_result_content(step_result: "AgentRunResult") -> Option
 
 async def _run_step_attempt(
     agent: "BDI",
-    current_step: IntentionStep,
+    current_step: PlanStep,
     retry_ctx: StepRetryContext,
 ) -> "AgentRunResult":
     is_retry = retry_ctx.is_retry()
@@ -437,18 +443,20 @@ async def _run_step_attempt(
 def _handle_step_execution_exception(
     agent: "BDI",
     intention,
-    current_step: IntentionStep,
+    current_step: PlanStep,
     error: Exception,
 ) -> None:
     print(f"{bcolors.FAIL}Exception during step execution: {error}{bcolors.ENDC}")
     traceback.print_exc()
 
-    intention.add_to_history(
+    plan = intention.active_plan
+    plan.add_to_history(
         step=current_step,
         result=f"Exception: {str(error)}",
         success=False,
         beliefs_updated=_snapshot_beliefs(agent),
     )
+    plan.status = PlanStatus.FAILED
 
     replan_desire_for_intention(
         agent,
@@ -460,7 +468,7 @@ def _handle_step_execution_exception(
 async def _run_step_with_retries(
     agent: "BDI",
     intention,
-    current_step: IntentionStep,
+    current_step: PlanStep,
 ) -> tuple[
     Optional["AgentRunResult"],
     bool,
@@ -470,6 +478,7 @@ async def _run_step_with_retries(
     retry_ctx = StepRetryContext(attempt_number=0)
     step_result: Optional["AgentRunResult"] = None
     step_succeeded = False
+    plan = intention.active_plan
 
     while True:
         if retry_ctx.is_retry():
@@ -477,7 +486,7 @@ async def _run_step_with_retries(
                 f"(Attempt {retry_ctx.attempt_number + 1}/{MAX_STEP_RETRIES + 1})"
             )
             print(
-                f"{bcolors.WARNING}  Retrying step {intention.current_step + 1} {attempt_label}{bcolors.ENDC}"
+                f"{bcolors.WARNING}  Retrying Plan Step {plan.current_step_index + 1} {attempt_label}{bcolors.ENDC}"
             )
 
         try:
@@ -492,7 +501,7 @@ async def _run_step_with_retries(
 
             if step_succeeded:
                 print(
-                    f"{bcolors.INTENTION}  Step {intention.current_step + 1} successful{' after retry' if retry_ctx.is_retry() else ''}.{bcolors.ENDC}"
+                    f"{bcolors.INTENTION}  Plan Step {plan.current_step_index + 1} successful{' after retry' if retry_ctx.is_retry() else ''}.{bcolors.ENDC}"
                 )
                 break
 
@@ -504,12 +513,12 @@ async def _run_step_with_retries(
 
             if retry_ctx.should_retry():
                 print(
-                    f"{bcolors.WARNING}  Step {intention.current_step + 1} failed. Auto-retry enabled (attempt {retry_ctx.attempt_number + 1}/{MAX_STEP_RETRIES + 1}).{bcolors.ENDC}"
+                    f"{bcolors.WARNING}  Plan Step {plan.current_step_index + 1} failed. Auto-retry enabled (attempt {retry_ctx.attempt_number + 1}/{MAX_STEP_RETRIES + 1}).{bcolors.ENDC}"
                 )
                 continue
 
             print(
-                f"{bcolors.WARNING}  Step {intention.current_step + 1} failed after {retry_ctx.attempt_number} retries. Escalating...{bcolors.ENDC}"
+                f"{bcolors.WARNING}  Plan Step {plan.current_step_index + 1} failed after {retry_ctx.attempt_number} retries. Escalating...{bcolors.ENDC}"
             )
             break
 
@@ -523,11 +532,11 @@ async def _run_step_with_retries(
 def _record_step_outcome(
     agent: "BDI",
     intention,
-    current_step: IntentionStep,
+    current_step: PlanStep,
     step_result: Optional["AgentRunResult"],
     step_succeeded: bool,
 ) -> None:
-    intention.add_to_history(
+    intention.active_plan.add_to_history(
         step=current_step,
         result=step_result.output if step_result else "No result",
         success=step_succeeded,
@@ -536,9 +545,13 @@ def _record_step_outcome(
 
 
 async def _handle_successful_step(agent: "BDI", intention) -> None:
-    intention.increment_current_step(lambda **kwargs: log_states(agent, **kwargs))
+    plan = intention.active_plan
+    plan.advance_current_step(
+        lambda **kwargs: log_states(agent, **kwargs),
+        desire_id=intention.desire_id,
+    )
 
-    if intention.current_step >= len(intention.steps):
+    if plan.is_complete():
         print(
             f"{bcolors.INTENTION}Completed final step. Intention for desire '{intention.desire_id}' finished.{bcolors.ENDC}"
         )
@@ -548,12 +561,13 @@ async def _handle_successful_step(agent: "BDI", intention) -> None:
 async def _handle_failed_step(
     agent: "BDI",
     intention,
-    current_step: IntentionStep,
+    current_step: PlanStep,
     step_result: Optional["AgentRunResult"],
     retry_ctx: StepRetryContext,
 ) -> Dict[str, bool]:
+    plan = intention.active_plan
     print(
-        f"{bcolors.WARNING}  Step {intention.current_step + 1} failed analysis after {retry_ctx.attempt_number} attempt(s). Intention progress paused.{bcolors.ENDC}"
+        f"{bcolors.WARNING}  Plan Step {plan.current_step_index + 1} failed analysis after {retry_ctx.attempt_number} attempt(s). Intention progress paused.{bcolors.ENDC}"
     )
 
     hitl_success = False
@@ -585,11 +599,12 @@ async def _handle_failed_step(
         }
 
     log_states(agent, ["beliefs"])
+    plan.status = PlanStatus.FAILED
     replan_desire_for_intention(
         agent,
         intention,
         reason=(
-            f"Step {intention.current_step + 1} failed after "
+            f"Plan Step {plan.current_step_index + 1} failed after "
             f"{retry_ctx.attempt_number} retry attempt(s)."
         ),
     )
@@ -614,16 +629,18 @@ async def execute_intentions(agent: "BDI") -> Dict:
         return _default_hitl_info()
 
     intention = agent.intentions[0]
-    if intention.current_step >= len(intention.steps):
+    plan = intention.active_plan
+    if plan.is_complete():
+        plan.status = PlanStatus.COMPLETED
         print(
             f"{bcolors.INTENTION}Intention for desire '{intention.desire_id}' already completed (found in execute_intentions).{bcolors.ENDC}"
         )
         await complete_intention_and_update_desire(agent, intention)
         return _default_hitl_info()
 
-    current_step = intention.steps[intention.current_step]
+    current_step = plan.steps[plan.current_step_index]
     print(
-        f"{bcolors.INTENTION}Executing step {intention.current_step + 1}/{len(intention.steps)} for desire '{intention.desire_id}': {current_step.description}{bcolors.ENDC}"
+        f"{bcolors.INTENTION}Executing Desire '{intention.desire_id}' | Intention '{intention.description or '(no description)'}' | Plan status '{plan.status.value}' | Plan Step {plan.current_step_index + 1}/{len(plan.steps)}: {current_step.description}{bcolors.ENDC}"
     )
 
     (
