@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 import subprocess
+import time
 
 from dotenv import load_dotenv
 from pydantic_ai.mcp import MCPServerStdio
@@ -140,6 +141,7 @@ def create_agent(model: CodexModel, task_path: Path, log_path: Path) -> BDI:
 async def run_task(model: CodexModel, task_path: Path, output_dir: Path) -> None:
     task_slug = task_path.name
     log_path = output_dir / f"{task_slug}.log"
+    task_started_at = time.monotonic()
 
     print(f"\n=== SBench Task: {task_slug} ===")
     print(f"Task folder: {task_path}")
@@ -175,6 +177,9 @@ async def run_task(model: CodexModel, task_path: Path, output_dir: Path) -> None
     print(f"\n=== SBench Task Result: {task_slug} ===")
     print(f"Status: {outcome}")
     print(f"Cycles Run: {cycles_run}/{MAX_CYCLES}")
+    elapsed_seconds = int(time.monotonic() - task_started_at)
+    elapsed_minutes, remaining_seconds = divmod(elapsed_seconds, 60)
+    print(f"Time: {elapsed_minutes} min {remaining_seconds} sec")
     if error_message:
         print(f"Error: {error_message}")
     print(f"Answer Folder: {task_path / 'answer'}")
