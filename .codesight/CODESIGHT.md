@@ -2,7 +2,7 @@
 
 > **Stack:** raw-http | none | unknown | python
 
-> 0 routes | 0 models | 0 components | 53 lib files | 5 env vars | 2 middleware | 0% test coverage
+> 0 routes | 0 models | 0 components | 47 lib files | 5 env vars | 1 middleware | 0% test coverage
 > **Token savings:** this file is ~4,000 tokens. Without it, AI exploration would cost ~23,700 tokens. **Saves ~19,700 tokens per conversation.**
 > **Last scanned:** 2026-06-04 02:00 — re-run after significant changes
 
@@ -10,26 +10,6 @@
 
 # Libraries
 
-- `antigravity/auth.py`
-  - function generate_pkce: () -> PKCEPair
-  - function get_token_storage_path: () -> Path
-  - function load_stored_tokens: () -> TokenData | None
-  - function save_tokens: (tokens) -> None
-  - function is_token_expired: (tokens, buffer_seconds) -> bool
-  - function encode_state: (verifier, project_id) -> str
-  - _...12 more_
-- `antigravity/model.py`
-  - function parse_retry_delay: (error_message) -> float | None
-  - function create_model: (model_name, provider, usage_tracker, thinking_budget, thinking_level, max_output_tokens, temperature) -> AntigravityModel
-  - class AntigravityModel
-- `antigravity/provider.py` — function create_provider: (header_style, usage_tracker) -> AntigravityProvider, class AntigravityProvider
-- `antigravity/transform.py`
-  - function strip_markdown_code_blocks: (text) -> str
-  - function sanitize_tool_name: (name) -> str
-  - function transform_schema: (schema, Any]) -> dict[str, Any]
-  - function messages_to_antigravity: (messages, tools) -> tuple[list[dict[str, Any]], dict[str, Any] | None, list[dict[str, Any]] | None]
-  - function antigravity_to_response: (response_data, Any], model_name) -> tuple[list[TextPart | ToolCallPart], Usage, bool]
-  - function parse_sse_event: (line) -> dict[str, Any] | None
 - `bdi/agent.py` — class BDI
 - `bdi/belief_updates.py`
   - function update_beliefs_from_desire_extraction: (agent, beliefs) -> BeliefStats
@@ -128,7 +108,7 @@
   - function get_mcp_servers: (repo_path)
   - function run_agent: (agent, metric_collector)
 - `benchmarks/experiments/crewai/TEMPLATE.py` — function build_agent: (model), function run_agent: (crew, metric_collector)
-- `benchmarks/experiments/crewai/antigravity_llm.py` — class AntigravityCrewAILLM
+- `benchmarks/experiments/crewai/pydantic_ai_llm.py` — class PydanticAILLM
 - `benchmarks/experiments/crewai/runner.py` — function main: (participant_path) -> None, function run_experiment: (participant_path, experiment_id, task_id, participant_id) -> Dict[str, Any]
 - `benchmarks/experiments/crewai/simple_file_read/experiment-1.py` — function build_agent: (model), function run_agent: (crew, metric_collector)
 - `benchmarks/experiments/langgraph/TEMPLATE.py`
@@ -232,7 +212,6 @@
 # Middleware
 
 ## auth
-- auth — `antigravity/auth.py`
 - auth — `codex/auth.py`
 
 ---
@@ -241,12 +220,11 @@
 
 ## Most Imported Files (change these carefully)
 
-- `/constants.py` — imported by **8** files
-- `/auth.py` — imported by **4** files
-- `/provider.py` — imported by **4** files
+- `/constants.py` — imported by **4** files
+- `/auth.py` — imported by **2** files
+- `/provider.py` — imported by **2** files
 - `/task_schema.py` — imported by **4** files
-- `/model.py` — imported by **2** files
-- `/transform.py` — imported by **1** files
+- `/model.py` — imported by **1** files
 - `/base_agent.py` — imported by **1** files
 - `/bdi_agent.py` — imported by **1** files
 - `/langgraph_agent.py` — imported by **1** files
@@ -262,12 +240,11 @@
 
 ## Import Map (who imports what)
 
-- `/constants.py` ← `antigravity/__init__.py`, `antigravity/auth.py`, `antigravity/model.py`, `antigravity/provider.py`, `codex/__init__.py` +3 more
-- `/auth.py` ← `antigravity/__init__.py`, `antigravity/provider.py`, `codex/__init__.py`, `codex/provider.py`
-- `/provider.py` ← `antigravity/__init__.py`, `antigravity/model.py`, `codex/__init__.py`, `codex/model.py`
+- `/constants.py` ← `codex/__init__.py`, `codex/auth.py`, `codex/model.py`, `codex/provider.py`
+- `/auth.py` ← `codex/__init__.py`, `codex/provider.py`
+- `/provider.py` ← `codex/__init__.py`, `codex/model.py`
 - `/task_schema.py` ← `benchmarks/tasks/__init__.py`, `benchmarks/tasks/complex_tasks.py`, `benchmarks/tasks/medium_tasks.py`, `benchmarks/tasks/simple_tasks.py`
-- `/model.py` ← `antigravity/__init__.py`, `codex/__init__.py`
-- `/transform.py` ← `antigravity/model.py`
+- `/model.py` ← `codex/__init__.py`
 - `/base_agent.py` ← `benchmarks/agents/__init__.py`
 - `/bdi_agent.py` ← `benchmarks/agents/__init__.py`
 - `/langgraph_agent.py` ← `benchmarks/agents/__init__.py`

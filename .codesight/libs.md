@@ -1,25 +1,5 @@
 # Libraries
 
-- `antigravity/auth.py`
-  - function generate_pkce: () -> PKCEPair
-  - function get_token_storage_path: () -> Path
-  - function load_stored_tokens: () -> TokenData | None
-  - function save_tokens: (tokens) -> None
-  - function is_token_expired: (tokens, buffer_seconds) -> bool
-  - function encode_state: (verifier, project_id) -> str
-  - _...12 more_
-- `antigravity/model.py`
-  - function parse_retry_delay: (error_message) -> float | None
-  - function create_model: (model_name, provider, usage_tracker, thinking_budget, thinking_level, max_output_tokens, temperature) -> AntigravityModel
-  - class AntigravityModel
-- `antigravity/provider.py` — function create_provider: (header_style, usage_tracker) -> AntigravityProvider, class AntigravityProvider
-- `antigravity/transform.py`
-  - function strip_markdown_code_blocks: (text) -> str
-  - function sanitize_tool_name: (name) -> str
-  - function transform_schema: (schema, Any]) -> dict[str, Any]
-  - function messages_to_antigravity: (messages, tools) -> tuple[list[dict[str, Any]], dict[str, Any] | None, list[dict[str, Any]] | None]
-  - function antigravity_to_response: (response_data, Any], model_name) -> tuple[list[TextPart | ToolCallPart], Usage, bool]
-  - function parse_sse_event: (line) -> dict[str, Any] | None
 - `bdi/agent.py` — class BDI
 - `bdi/belief_updates.py`
   - function update_beliefs_from_desire_extraction: (agent, beliefs) -> BeliefStats
@@ -118,7 +98,7 @@
   - function get_mcp_servers: (repo_path)
   - function run_agent: (agent, metric_collector)
 - `benchmarks/experiments/crewai/TEMPLATE.py` — function build_agent: (model), function run_agent: (crew, metric_collector)
-- `benchmarks/experiments/crewai/antigravity_llm.py` — class AntigravityCrewAILLM
+- `benchmarks/experiments/crewai/pydantic_ai_llm.py` — class PydanticAILLM
 - `benchmarks/experiments/crewai/runner.py` — function main: (participant_path) -> None, function run_experiment: (participant_path, experiment_id, task_id, participant_id) -> Dict[str, Any]
 - `benchmarks/experiments/crewai/simple_file_read/experiment-1.py` — function build_agent: (model), function run_agent: (crew, metric_collector)
 - `benchmarks/experiments/langgraph/TEMPLATE.py`

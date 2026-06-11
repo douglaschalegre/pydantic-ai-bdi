@@ -2,12 +2,11 @@
 
 ## Most Imported Files (change these carefully)
 
-- `/constants.py` — imported by **8** files
-- `/auth.py` — imported by **4** files
-- `/provider.py` — imported by **4** files
+- `/constants.py` — imported by **4** files
+- `/auth.py` — imported by **2** files
+- `/provider.py` — imported by **2** files
 - `/task_schema.py` — imported by **4** files
-- `/model.py` — imported by **2** files
-- `/transform.py` — imported by **1** files
+- `/model.py` — imported by **1** files
 - `/base_agent.py` — imported by **1** files
 - `/bdi_agent.py` — imported by **1** files
 - `/langgraph_agent.py` — imported by **1** files
@@ -23,12 +22,11 @@
 
 ## Import Map (who imports what)
 
-- `/constants.py` ← `antigravity/__init__.py`, `antigravity/auth.py`, `antigravity/model.py`, `antigravity/provider.py`, `codex/__init__.py` +3 more
-- `/auth.py` ← `antigravity/__init__.py`, `antigravity/provider.py`, `codex/__init__.py`, `codex/provider.py`
-- `/provider.py` ← `antigravity/__init__.py`, `antigravity/model.py`, `codex/__init__.py`, `codex/model.py`
+- `/constants.py` ← `codex/__init__.py`, `codex/auth.py`, `codex/model.py`, `codex/provider.py`
+- `/auth.py` ← `codex/__init__.py`, `codex/provider.py`
+- `/provider.py` ← `codex/__init__.py`, `codex/model.py`
 - `/task_schema.py` ← `benchmarks/tasks/__init__.py`, `benchmarks/tasks/complex_tasks.py`, `benchmarks/tasks/medium_tasks.py`, `benchmarks/tasks/simple_tasks.py`
-- `/model.py` ← `antigravity/__init__.py`, `codex/__init__.py`
-- `/transform.py` ← `antigravity/model.py`
+- `/model.py` ← `codex/__init__.py`
 - `/base_agent.py` ← `benchmarks/agents/__init__.py`
 - `/bdi_agent.py` ← `benchmarks/agents/__init__.py`
 - `/langgraph_agent.py` ← `benchmarks/agents/__init__.py`
