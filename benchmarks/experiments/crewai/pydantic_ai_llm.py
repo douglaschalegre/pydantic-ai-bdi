@@ -1,4 +1,4 @@
-"""CrewAI LLM adapter for Antigravity models."""
+"""CrewAI LLM adapter for pydantic-ai models."""
 
 from __future__ import annotations
 
@@ -13,8 +13,8 @@ from pydantic_ai.direct import model_request
 from pydantic_ai.messages import ModelRequest, TextPart
 
 
-class AntigravityCrewAILLM(BaseLLM):
-    """Minimal CrewAI LLM adapter for Antigravity models."""
+class PydanticAILLM(BaseLLM):
+    """Minimal CrewAI LLM adapter for pydantic-ai models."""
 
     def __init__(
         self,
@@ -22,8 +22,9 @@ class AntigravityCrewAILLM(BaseLLM):
         temperature: float | None = None,
         **kwargs: Any,
     ) -> None:
-        self._antigravity_model = model
-        super().__init__(model=model.model_name, temperature=temperature, **kwargs)
+        self._pydantic_ai_model = model
+        model_name = getattr(model, "model_name", str(model))
+        super().__init__(model=model_name, temperature=temperature, **kwargs)
 
     def call(
         self,
@@ -47,7 +48,7 @@ class AntigravityCrewAILLM(BaseLLM):
         try:
             prompt = _normalize_messages(messages)
             request = ModelRequest.user_text_prompt(prompt)
-            response = _run_sync(model_request(self._antigravity_model, [request]))
+            response = _run_sync(model_request(self._pydantic_ai_model, [request]))
             content = _extract_text(response.parts)
             content = self._apply_stop_words(content)
             self._emit_call_completed_event(

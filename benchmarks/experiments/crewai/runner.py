@@ -10,18 +10,18 @@ import sys
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional
-from antigravity import AntigravityModel, AntigravityProvider
 from benchmarks.experiments.base_experiment import ExperimentMetrics, MetricCollector
-from benchmarks.experiments.crewai.antigravity_llm import AntigravityCrewAILLM
+from benchmarks.experiments.crewai.pydantic_ai_llm import PydanticAILLM
 from benchmarks.metrics.usage_tracker import UsageTracker
 from benchmarks.tasks import TaskResult
+from codex import CODEX_DEFAULT_MODEL, CodexModel, CodexProvider
 from dotenv import load_dotenv
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT))
 
 
-MODEL_NAME = "gemini-2.5-flash"
+MODEL_NAME = CODEX_DEFAULT_MODEL
 
 
 def _repo_root() -> Path:
@@ -139,9 +139,9 @@ async def run_experiment(
         raise AttributeError("Participant file must define build_agent(model)")
 
     usage_tracker = UsageTracker()
-    provider = AntigravityProvider(usage_tracker=usage_tracker)
-    model = AntigravityModel(MODEL_NAME, provider=provider)
-    crewai_llm = AntigravityCrewAILLM(model)
+    provider = CodexProvider(usage_tracker=usage_tracker)
+    model = CodexModel(MODEL_NAME, provider=provider)
+    crewai_llm = PydanticAILLM(model)
 
     agent = build_agent(model=crewai_llm)
     if agent is None:
