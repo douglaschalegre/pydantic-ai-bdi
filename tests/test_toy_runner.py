@@ -19,7 +19,6 @@ def make_sbench_root(tmp_path: Path, task_id: str = "task-a") -> Path:
 
 def test_parse_config_accepts_orchestrator_command_options(tmp_path: Path) -> None:
     sbench_root = tmp_path / "sbench"
-    output_dir = tmp_path / "logs"
 
     config = toy_config.parse_config(
         [
@@ -29,8 +28,6 @@ def test_parse_config_accepts_orchestrator_command_options(tmp_path: Path) -> No
             "task-a",
             "--model",
             "gpt-test",
-            "--output-dir",
-            str(output_dir),
             "--command-timeout-seconds",
             "12",
             "--quiet",
@@ -41,7 +38,6 @@ def test_parse_config_accepts_orchestrator_command_options(tmp_path: Path) -> No
         task_id="task-a",
         model_name="gpt-test",
         sbench_root=sbench_root,
-        output_dir=output_dir,
         command_timeout_seconds=12,
         verbose=False,
     )
@@ -136,7 +132,6 @@ def test_create_agent_scopes_run_tool_and_usage_tracker(
     monkeypatch.setattr(toy, "BDI", FakeBDI)
     monkeypatch.setattr(toy, "run_command", fake_run_command)
     task_path = tmp_path / "tasks" / "task-a"
-    log_path = tmp_path / "logs" / "task-a.log"
     usage_tracker = object()
     config = toy_config.RunConfig(
         task_id="task-a",
@@ -148,7 +143,6 @@ def test_create_agent_scopes_run_tool_and_usage_tracker(
         "model",
         task_path,
         config,
-        log_path,
         usage_tracker,
     )
     result = captured["tool"]("ls", timeout_seconds=99)
@@ -156,7 +150,7 @@ def test_create_agent_scopes_run_tool_and_usage_tracker(
     assert isinstance(agent, FakeBDI)
     assert captured["args"] == ("model",)
     assert captured["kwargs"]["verbose"] is False
-    assert captured["kwargs"]["log_file_path"] == str(log_path)
+    assert "log_file_path" not in captured["kwargs"]
     assert captured["kwargs"]["usage_tracker"] is usage_tracker
     assert captured["kwargs"]["emit_run_events_to_stdout"] is True
     assert "structured_log_file_path" not in captured["kwargs"]
@@ -179,11 +173,9 @@ async def test_run_task_emits_usage_metadata(
 ) -> None:
     task_path = tmp_path / "tasks" / "task-a"
     task_path.mkdir(parents=True)
-    output_dir = tmp_path / "logs"
     config = toy_config.RunConfig(
         task_id="task-a",
         model_name="gpt-test",
-        output_dir=output_dir,
         verbose=False,
     )
 
@@ -221,12 +213,10 @@ async def test_run_task_emits_usage_metadata(
         model,
         task_path,
         config,
-        log_path,
         usage_tracker=None,
     ):
         assert model == "model"
         assert task_path.name == "task-a"
-        assert log_path == output_dir / "task-a.log"
         assert usage_tracker is not None
         return FakeAgent(usage_tracker)
 
@@ -261,11 +251,9 @@ async def test_run_benchmark_runs_one_selected_task_and_returns_exit_code(
     tmp_path: Path,
 ) -> None:
     sbench_root = make_sbench_root(tmp_path)
-    output_dir = tmp_path / "logs"
     config = toy_config.RunConfig(
         task_id="task-a",
         sbench_root=sbench_root,
-        output_dir=output_dir,
     )
     task_calls = []
 
@@ -280,7 +268,6 @@ async def test_run_benchmark_runs_one_selected_task_and_returns_exit_code(
     exit_code = await toy.run_benchmark(config)
 
     assert exit_code == toy.EXIT_SUCCESS
-    assert output_dir.is_dir()
     assert task_calls == [(("model", config), "task-a", config)]
 
 

@@ -37,7 +37,6 @@ def create_agent(
     model: object,
     task_path: Path,
     config: RunConfig,
-    log_path: Path,
     usage_tracker: BDIUsageTracker | None = None,
 ) -> BDI:
     agent = BDI(
@@ -55,7 +54,6 @@ def create_agent(
         intentions=[],
         verbose=config.verbose,
         enable_human_in_the_loop=False,
-        log_file_path=str(log_path),
         usage_tracker=usage_tracker,
         emit_run_events_to_stdout=True,
         mcp_servers=[
@@ -114,7 +112,6 @@ def _summarize_bdi_agent(agent: BDI | None) -> dict[str, object] | None:
 
 async def run_task(model: object, task_path: Path, config: RunConfig) -> str:
     task_slug = task_path.name
-    log_path = config.output_dir / f"{task_slug}.log"
     usage_tracker = BDIUsageTracker(model_name=config.model_name)
     agent: BDI | None = None
     started_at = time.monotonic()
@@ -123,14 +120,12 @@ async def run_task(model: object, task_path: Path, config: RunConfig) -> str:
 
     print(f"Running SBench task {task_slug}")
     print(f"Task folder: {task_path}")
-    print(f"Log file: {log_path}")
 
     try:
         agent = create_agent(
             model,
             task_path,
             config,
-            log_path,
             usage_tracker=usage_tracker,
         )
         async with agent.run_mcp_servers():
@@ -180,7 +175,6 @@ async def run_task(model: object, task_path: Path, config: RunConfig) -> str:
 
 async def run_benchmark(config: RunConfig) -> int:
     task_path = get_task_path(config)
-    config.output_dir.mkdir(parents=True, exist_ok=True)
     print(f"Model: {config.model_name}")
     print(f"SBench root: {config.sbench_root}")
     outcome = await run_task(create_model(config), task_path, config)

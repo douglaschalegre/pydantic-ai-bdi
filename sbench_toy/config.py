@@ -8,7 +8,6 @@ from pathlib import Path
 
 MODEL_NAME = "gpt-5.4"
 SBENCH_ROOT = Path("/Users/douglas/code/masters/sbench")
-OUTPUT_DIR = Path(__file__).resolve().parents[1] / "output" / "sbench-toy"
 COMMAND_TIMEOUT_SECONDS = 180
 VERBOSE = True
 
@@ -22,7 +21,6 @@ class RunConfig:
     task_id: str
     model_name: str = MODEL_NAME
     sbench_root: Path = SBENCH_ROOT
-    output_dir: Path = OUTPUT_DIR
     command_timeout_seconds: int = COMMAND_TIMEOUT_SECONDS
     verbose: bool = VERBOSE
 
@@ -48,7 +46,6 @@ def parse_config(argv: Sequence[str] | None = None) -> RunConfig:
         help="Single SBench task folder name to run.",
     )
     parser.add_argument("--model", default=MODEL_NAME)
-    parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR)
     parser.add_argument(
         "--command-timeout-seconds",
         type=positive_int,
@@ -66,7 +63,6 @@ def parse_config(argv: Sequence[str] | None = None) -> RunConfig:
         task_id=args.task_id,
         model_name=args.model,
         sbench_root=args.sbench_root.expanduser(),
-        output_dir=args.output_dir.expanduser(),
         command_timeout_seconds=args.command_timeout_seconds,
         verbose=args.verbose,
     )
