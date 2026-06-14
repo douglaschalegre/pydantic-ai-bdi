@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Sequence
+import json
 from pathlib import Path
 import sys
 import time
 
 from dotenv import load_dotenv
-from pydantic_ai.mcp import MCPServerStdio
+from pydantic_ai.mcp import MCPServerStdio  # noqa: F401
 
-from bdi import BDI
+from bdi import BDI, BDIUsageTracker
 from bdi.cycle import is_final_cycle_status
 from bdi.schemas import DesireStatus
 from sbench_toy.config import RunConfig, RunnerConfigError, get_task_path, parse_config
@@ -33,7 +34,11 @@ def create_model(config: RunConfig):
 
 
 def create_agent(
-    model: object, task_path: Path, config: RunConfig, log_path: Path
+    model: object,
+    task_path: Path,
+    config: RunConfig,
+    log_path: Path,
+    usage_tracker: BDIUsageTracker | None = None,
 ) -> BDI:
     agent = BDI(
         model,
@@ -51,6 +56,8 @@ def create_agent(
         verbose=config.verbose,
         enable_human_in_the_loop=False,
         log_file_path=str(log_path),
+        usage_tracker=usage_tracker,
+        emit_run_events_to_stdout=True,
         mcp_servers=[
             # MCPServerStdio(
             #     "npx",
@@ -78,9 +85,38 @@ def create_agent(
     return agent
 
 
+def _status_value(status: object) -> object:
+    return getattr(status, "value", status)
+
+
+def _summarize_bdi_agent(agent: BDI | None) -> dict[str, object] | None:
+    if agent is None:
+        return None
+
+    beliefs = getattr(agent, "beliefs", None)
+    belief_items = getattr(beliefs, "beliefs", {}) if beliefs is not None else {}
+    desires = getattr(agent, "desires", []) or []
+    intentions = getattr(agent, "intentions", []) or []
+
+    return {
+        "cycle_count": getattr(agent, "cycle_count", None),
+        "beliefs": len(belief_items),
+        "desires": [
+            {
+                "id": getattr(desire, "id", None),
+                "status": _status_value(getattr(desire, "status", None)),
+            }
+            for desire in desires
+        ],
+        "intentions": len(intentions),
+    }
+
+
 async def run_task(model: object, task_path: Path, config: RunConfig) -> str:
     task_slug = task_path.name
     log_path = config.output_dir / f"{task_slug}.log"
+    usage_tracker = BDIUsageTracker(model_name=config.model_name)
+    agent: BDI | None = None
     started_at = time.monotonic()
     cycles_run = 0
     outcome = "max_cycles_reached"
@@ -90,7 +126,13 @@ async def run_task(model: object, task_path: Path, config: RunConfig) -> str:
     print(f"Log file: {log_path}")
 
     try:
-        agent = create_agent(model, task_path, config, log_path)
+        agent = create_agent(
+            model,
+            task_path,
+            config,
+            log_path,
+            usage_tracker=usage_tracker,
+        )
         async with agent.run_mcp_servers():
             for cycle in range(1, MAX_CYCLES + 1):
                 cycles_run = cycle
@@ -116,6 +158,23 @@ async def run_task(model: object, task_path: Path, config: RunConfig) -> str:
         f"elapsed_seconds={elapsed_seconds}"
     )
     print(f"Answer folder: {task_path / 'answer'}")
+    print(
+        json.dumps(
+            {
+                "type": "bdi.run.completed",
+                "model": config.model_name,
+                "task": task_slug,
+                "outcome": outcome,
+                "cycles": {"run": cycles_run, "max": MAX_CYCLES},
+                "elapsed_seconds": elapsed_seconds,
+                "usage": usage_tracker.usage_summary(),
+                "cost": usage_tracker.cost_summary(),
+                "bdi": _summarize_bdi_agent(agent),
+            },
+            ensure_ascii=True,
+            sort_keys=True,
+        )
+    )
     return outcome
 
 

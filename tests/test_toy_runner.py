@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -108,7 +109,7 @@ def test_run_command_uses_task_cwd_and_clamps_timeout(
     }
 
 
-def test_create_agent_scopes_mcp_and_run_tool(
+def test_create_agent_scopes_run_tool_and_usage_tracker(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -123,15 +124,6 @@ def test_create_agent_scopes_mcp_and_run_tool(
             captured["tool"] = func
             return func
 
-    class FakeMCPServerStdio:
-        def __init__(self, command, *, args, tool_prefix, timeout):
-            captured["mcp"] = {
-                "command": command,
-                "args": args,
-                "tool_prefix": tool_prefix,
-                "timeout": timeout,
-            }
-
     def fake_run_command(task_path, command, *, timeout_seconds, max_timeout_seconds):
         captured["run_command"] = {
             "task_path": task_path,
@@ -142,31 +134,33 @@ def test_create_agent_scopes_mcp_and_run_tool(
         return "ran"
 
     monkeypatch.setattr(toy, "BDI", FakeBDI)
-    monkeypatch.setattr(toy, "MCPServerStdio", FakeMCPServerStdio)
     monkeypatch.setattr(toy, "run_command", fake_run_command)
     task_path = tmp_path / "tasks" / "task-a"
     log_path = tmp_path / "logs" / "task-a.log"
+    usage_tracker = object()
     config = toy_config.RunConfig(
         task_id="task-a",
         command_timeout_seconds=9,
         verbose=False,
     )
 
-    agent = toy.create_agent("model", task_path, config, log_path)
+    agent = toy.create_agent(
+        "model",
+        task_path,
+        config,
+        log_path,
+        usage_tracker,
+    )
     result = captured["tool"]("ls", timeout_seconds=99)
 
     assert isinstance(agent, FakeBDI)
     assert captured["args"] == ("model",)
     assert captured["kwargs"]["verbose"] is False
     assert captured["kwargs"]["log_file_path"] == str(log_path)
-    assert len(captured["kwargs"]["mcp_servers"]) == 1
-    assert isinstance(captured["kwargs"]["mcp_servers"][0], FakeMCPServerStdio)
-    assert captured["mcp"] == {
-        "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-filesystem", str(task_path)],
-        "tool_prefix": "fs",
-        "timeout": 60,
-    }
+    assert captured["kwargs"]["usage_tracker"] is usage_tracker
+    assert captured["kwargs"]["emit_run_events_to_stdout"] is True
+    assert "structured_log_file_path" not in captured["kwargs"]
+    assert captured["kwargs"]["mcp_servers"] == []
     assert "Do not read hidden SBench evaluation files" in captured["kwargs"]["desires"][0]
     assert result == "ran"
     assert captured["run_command"] == {
@@ -175,6 +169,90 @@ def test_create_agent_scopes_mcp_and_run_tool(
         "timeout_seconds": 99,
         "max_timeout_seconds": 9,
     }
+
+
+@pytest.mark.asyncio
+async def test_run_task_emits_usage_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    task_path = tmp_path / "tasks" / "task-a"
+    task_path.mkdir(parents=True)
+    output_dir = tmp_path / "logs"
+    config = toy_config.RunConfig(
+        task_id="task-a",
+        model_name="gpt-test",
+        output_dir=output_dir,
+        verbose=False,
+    )
+
+    class FakeRunMCPServers:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+    class FakeAgent:
+        def __init__(self, usage_tracker):
+            self.usage_tracker = usage_tracker
+            self.beliefs = SimpleNamespace(beliefs={"task": "done"})
+            self.desires = [SimpleNamespace(id="desire_1", status=toy.DesireStatus.ACHIEVED)]
+            self.intentions = []
+            self.cycle_count = 1
+
+        def run_mcp_servers(self):
+            return FakeRunMCPServers()
+
+        async def bdi_cycle(self):
+            self.usage_tracker.record_usage(
+                SimpleNamespace(
+                    requests=2,
+                    tool_calls=1,
+                    input_tokens=100,
+                    cache_read_tokens=60,
+                    output_tokens=20,
+                )
+            )
+            return "terminal"
+
+    def fake_create_agent(
+        model,
+        task_path,
+        config,
+        log_path,
+        usage_tracker=None,
+    ):
+        assert model == "model"
+        assert task_path.name == "task-a"
+        assert log_path == output_dir / "task-a.log"
+        assert usage_tracker is not None
+        return FakeAgent(usage_tracker)
+
+    monkeypatch.setattr(toy, "create_agent", fake_create_agent)
+
+    outcome = await toy.run_task("model", task_path, config)
+
+    assert outcome == "achieved"
+    metadata = json.loads(capsys.readouterr().out.splitlines()[-1])
+    assert metadata["type"] == "bdi.run.completed"
+    assert metadata["model"] == "gpt-test"
+    assert metadata["task"] == "task-a"
+    assert metadata["outcome"] == "achieved"
+    assert "structured_log_file" not in metadata
+    assert metadata["cycles"] == {"run": 1, "max": toy.MAX_CYCLES}
+    assert metadata["usage"]["requests"] == 2
+    assert metadata["usage"]["tool_calls"] == 1
+    assert metadata["usage"]["input_tokens"] == 100
+    assert metadata["usage"]["cached_input_tokens"] == 60
+    assert metadata["usage"]["output_tokens"] == 20
+    assert metadata["usage"]["total_tokens"] == 120
+    assert metadata["cost"]["estimated"] is False
+    assert metadata["bdi"]["beliefs"] == 1
+    assert metadata["bdi"]["desires"] == [
+        {"id": "desire_1", "status": "achieved"}
+    ]
 
 
 @pytest.mark.asyncio

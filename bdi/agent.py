@@ -34,6 +34,7 @@ from bdi.logging import (
     configure_terminal_output_mirror,
     log_states,
 )
+from bdi.usage import BDIUsageTracker
 from bdi.prompts import build_initial_belief_extraction_prompt
 from bdi.planning import generate_intentions_from_desires
 from bdi.execution import execute_intentions
@@ -59,6 +60,8 @@ class BDI(Agent, Generic[T]):
         enable_human_in_the_loop: bool = False,
         log_file_path: Optional[str] = None,
         structured_log_file_path: Optional[str] = None,
+        usage_tracker: Optional[BDIUsageTracker] = None,
+        emit_run_events_to_stdout: bool = False,
         output_retries: int = 3,  # Higher default for structured output retries
         **kwargs,
     ):
@@ -73,6 +76,8 @@ class BDI(Agent, Generic[T]):
         self.enable_human_in_the_loop = enable_human_in_the_loop
         self.log_file_path = log_file_path
         self.structured_log_file_path = structured_log_file_path
+        self.usage_tracker = usage_tracker
+        self.emit_run_events_to_stdout = emit_run_events_to_stdout
         self._structured_log_entries: list[dict[str, Any]] = []
         self.cycle_count = 0
 
@@ -84,9 +89,7 @@ class BDI(Agent, Generic[T]):
 
         self._initialize_string_desires(desires)
 
-    def _initialize_string_desires(
-        self, desire_strings: Optional[List[str]]
-    ) -> None:
+    def _initialize_string_desires(self, desire_strings: Optional[List[str]]) -> None:
         """Initialize desires from string descriptions.
 
         Args:
@@ -111,9 +114,7 @@ class BDI(Agent, Generic[T]):
         if not self.desires:
             return
 
-        desires_text = "\n".join(
-            [f"- {d.description}" for d in self.desires]
-        )
+        desires_text = "\n".join([f"- {d.description}" for d in self.desires])
 
         belief_extraction_prompt = build_initial_belief_extraction_prompt(desires_text)
 
@@ -180,7 +181,9 @@ class BDI(Agent, Generic[T]):
             return
 
         try:
-            Path(self.structured_log_file_path).parent.mkdir(parents=True, exist_ok=True)
+            Path(self.structured_log_file_path).parent.mkdir(
+                parents=True, exist_ok=True
+            )
             self._structured_log_entries = []
             with open(self.structured_log_file_path, "w", encoding="utf-8") as f:
                 json.dump(self._structured_log_entries, f, ensure_ascii=False, indent=2)
@@ -214,10 +217,46 @@ class BDI(Agent, Generic[T]):
         user_prompt: str | Sequence[UserContent] | None,
         result: AgentRunResult[Any],
     ) -> None:
-        """Capture a single `run(...)` invocation into the structured log."""
-        entry = build_structured_run_log_entry(user_prompt, result)
+        """Capture a single `run(...)` invocation as structured run metadata."""
+        model_name = self.usage_tracker.model_name if self.usage_tracker else None
+        entry = build_structured_run_log_entry(
+            user_prompt,
+            result,
+            model_name=model_name,
+        )
         self._structured_log_entries.append(entry)
         self._persist_structured_log_entries()
+        if self.emit_run_events_to_stdout:
+            self._emit_stdout_run_event(entry)
+
+    def _emit_stdout_run_event(self, entry: dict[str, Any]) -> None:
+        """Emit one JSON Lines event for SBench stdout capture."""
+        event = {
+            "type": "bdi.agent.run.completed",
+            "run_index": len(self._structured_log_entries),
+            **entry,
+        }
+        print(json.dumps(event, ensure_ascii=True))
+
+    def _usage_attributes(self) -> dict[str, Any]:
+        desire_statuses: dict[str, int] = {}
+        for desire in self.desires:
+            status = desire.status.value
+            desire_statuses[status] = desire_statuses.get(status, 0) + 1
+
+        return {
+            "bdi_cycle_count": self.cycle_count,
+            "bdi_beliefs": len(self.beliefs.beliefs),
+            "bdi_desires": len(self.desires),
+            "bdi_desire_statuses": desire_statuses,
+            "bdi_intentions": len(self.intentions),
+        }
+
+    def _record_usage(self, result: AgentRunResult[Any]) -> None:
+        if self.usage_tracker is None:
+            return
+
+        self.usage_tracker.record_result(result, attributes=self._usage_attributes())
 
     @overload
     async def run(
@@ -301,6 +340,13 @@ class BDI(Agent, Generic[T]):
             builtin_tools=builtin_tools,
             event_stream_handler=event_stream_handler,
         )
+
+        try:
+            self._record_usage(result)
+        except Exception as e:
+            print(
+                f"{bcolors.WARNING}Failed to capture usage metadata: {e}{bcolors.ENDC}"
+            )
 
         try:
             self._record_structured_run(user_prompt, result)

@@ -14,6 +14,7 @@ from pydantic_ai.messages import (
 )
 
 import bdi.agent as agent_module
+from bdi import usage as usage_module
 from bdi.agent import BDI
 from bdi.logging import build_structured_run_log_entry
 
@@ -24,6 +25,7 @@ def _build_result(
     output,
     response=None,
     output_tool_name=None,
+    usage=None,
 ):
     if response is None:
         response = next(
@@ -31,12 +33,15 @@ def _build_result(
             None,
         )
 
-    return SimpleNamespace(
+    result = SimpleNamespace(
         output=output,
         response=response,
         new_messages=lambda: list(messages),
         _output_tool_name=output_tool_name,
     )
+    if usage is not None:
+        result.usage = lambda: usage
+    return result
 
 
 def test_build_structured_run_log_entry_for_text_response() -> None:
@@ -155,6 +160,164 @@ def test_build_structured_run_log_entry_for_tool_calls_preserves_order() -> None
     }
 
 
+def test_build_structured_run_log_entry_includes_usage_metadata(monkeypatch) -> None:
+    monkeypatch.setattr(
+        usage_module,
+        "_estimate_cost_usd",
+        lambda _usage, _model_name: 0.123,
+    )
+    messages = [
+        ModelRequest(parts=[UserPromptPart("Use tracked tokens.")]),
+        ModelResponse(
+            parts=[TextPart(content="Tracked.")],
+            model_name="gpt-test",
+        ),
+    ]
+    result = _build_result(
+        messages=messages,
+        output="Tracked.",
+        usage=SimpleNamespace(
+            requests=1,
+            tool_calls=2,
+            input_tokens=100,
+            cache_read_tokens=40,
+            cache_write_tokens=5,
+            output_tokens=20,
+            details={"reasoning_tokens": 7},
+        ),
+    )
+
+    entry = build_structured_run_log_entry("Use tracked tokens.", result)
+
+    assert entry == {
+        "user": "Use tracked tokens.",
+        "assistant": "Tracked.",
+        "tool_calls": [],
+        "usage": {
+            "requests": 1,
+            "tool_calls": 2,
+            "input_tokens": 100,
+            "cached_input_tokens": 40,
+            "cache_read_tokens": 40,
+            "cache_write_tokens": 5,
+            "input_audio_tokens": 0,
+            "cache_audio_read_tokens": 0,
+            "output_tokens": 20,
+            "output_audio_tokens": 0,
+            "total_tokens": 120,
+            "details": {"reasoning_tokens": 7},
+        },
+        "cost": {"usd": 0.123, "estimated": True},
+        "model": "gpt-test",
+    }
+
+
+@pytest.mark.asyncio
+async def test_bdi_run_records_usage_tracker(monkeypatch) -> None:
+    async def fake_run(self, user_prompt=None, **_kwargs):
+        assistant_text = f"assistant:{user_prompt}"
+        messages = [
+            ModelRequest(parts=[UserPromptPart(str(user_prompt))]),
+            ModelResponse(parts=[TextPart(content=assistant_text)]),
+        ]
+        return _build_result(messages=messages, output=assistant_text)
+
+    class FakeUsageTracker:
+        def __init__(self):
+            self.calls = []
+
+        def record_result(self, result, *, attributes=None):
+            self.calls.append((result, attributes))
+
+    monkeypatch.setattr(Agent, "run", fake_run)
+
+    usage_tracker = FakeUsageTracker()
+    agent = BDI(usage_tracker=usage_tracker)
+    agent.cycle_count = 2
+
+    result = await agent.run("first")
+
+    assert usage_tracker.calls == [
+        (
+            result,
+            {
+                "bdi_cycle_count": 2,
+                "bdi_beliefs": 0,
+                "bdi_desires": 0,
+                "bdi_desire_statuses": {},
+                "bdi_intentions": 0,
+            },
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_bdi_run_emits_stdout_event_when_enabled(
+    monkeypatch,
+    capsys,
+) -> None:
+    monkeypatch.setattr(
+        usage_module,
+        "_estimate_cost_usd",
+        lambda _usage, _model_name: 0.045,
+    )
+
+    async def fake_run(self, user_prompt=None, **_kwargs):
+        assistant_text = f"assistant:{user_prompt}"
+        messages = [
+            ModelRequest(parts=[UserPromptPart(str(user_prompt))]),
+            ModelResponse(
+                parts=[TextPart(content=assistant_text)],
+                model_name="gpt-test",
+            ),
+        ]
+        return _build_result(
+            messages=messages,
+            output=assistant_text,
+            usage=SimpleNamespace(
+                requests=1,
+                input_tokens=30,
+                cache_read_tokens=10,
+                output_tokens=6,
+            ),
+        )
+
+    monkeypatch.setattr(Agent, "run", fake_run)
+
+    agent = BDI(
+        usage_tracker=usage_module.BDIUsageTracker(model_name="gpt-test"),
+        emit_run_events_to_stdout=True,
+    )
+    capsys.readouterr()
+
+    await agent.run("first")
+
+    event = json.loads(capsys.readouterr().out.splitlines()[-1])
+    assert event == {
+        "type": "bdi.agent.run.completed",
+        "run_index": 1,
+        "user": "first",
+        "assistant": "assistant:first",
+        "tool_calls": [],
+        "usage": {
+            "requests": 1,
+            "tool_calls": 0,
+            "input_tokens": 30,
+            "cached_input_tokens": 10,
+            "cache_read_tokens": 10,
+            "cache_write_tokens": 0,
+            "input_audio_tokens": 0,
+            "cache_audio_read_tokens": 0,
+            "output_tokens": 6,
+            "output_audio_tokens": 0,
+            "total_tokens": 36,
+            "details": {},
+        },
+        "cost": {"usd": 0.045, "estimated": True},
+        "model": "gpt-test",
+    }
+
+
 @pytest.mark.asyncio
 async def test_bdi_run_persists_structured_log_after_each_call(
     tmp_path, monkeypatch
@@ -198,6 +361,67 @@ async def test_bdi_run_persists_structured_log_after_each_call(
         },
     ]
 
+
+@pytest.mark.asyncio
+async def test_bdi_run_persists_structured_log_usage_metadata(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    structured_log_path = tmp_path / "agent-run.json"
+    monkeypatch.setattr(
+        usage_module,
+        "_estimate_cost_usd",
+        lambda _usage, _model_name: 0.045,
+    )
+
+    async def fake_run(self, user_prompt=None, **_kwargs):
+        assistant_text = f"assistant:{user_prompt}"
+        messages = [
+            ModelRequest(parts=[UserPromptPart(str(user_prompt))]),
+            ModelResponse(
+                parts=[TextPart(content=assistant_text)],
+                model_name="gpt-test",
+            ),
+        ]
+        return _build_result(
+            messages=messages,
+            output=assistant_text,
+            usage=SimpleNamespace(
+                requests=1,
+                input_tokens=30,
+                cache_read_tokens=10,
+                output_tokens=6,
+            ),
+        )
+
+    monkeypatch.setattr(Agent, "run", fake_run)
+
+    agent = BDI(structured_log_file_path=str(structured_log_path))
+    await agent.run("first")
+
+    assert json.loads(structured_log_path.read_text()) == [
+        {
+            "user": "first",
+            "assistant": "assistant:first",
+            "tool_calls": [],
+            "usage": {
+                "requests": 1,
+                "tool_calls": 0,
+                "input_tokens": 30,
+                "cached_input_tokens": 10,
+                "cache_read_tokens": 10,
+                "cache_write_tokens": 0,
+                "input_audio_tokens": 0,
+                "cache_audio_read_tokens": 0,
+                "output_tokens": 6,
+                "output_audio_tokens": 0,
+                "total_tokens": 36,
+                "details": {},
+            },
+            "cost": {"usd": 0.045, "estimated": True},
+            "model": "gpt-test",
+        }
+    ]
 
 def test_bdi_initializes_text_and_structured_logs_independently(
     tmp_path, monkeypatch

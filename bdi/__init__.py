@@ -15,6 +15,7 @@ Main exports:
 
 # Main agent class
 from bdi.agent import BDI
+from bdi.usage import BDIUsageTracker
 
 # Core schemas (most commonly used)
 from bdi.schemas import (
@@ -38,6 +39,7 @@ from bdi.schemas import (
 __all__ = [
     # Agent
     "BDI",
+    "BDIUsageTracker",
     # Core schemas
     "Belief",
     "BeliefSet",

@@ -26,6 +26,7 @@ from pydantic_ai.messages import (
     UserPromptPart,
 )
 
+from bdi.usage import build_result_usage_metadata
 from helper.util import bcolors
 
 if TYPE_CHECKING:
@@ -271,6 +272,8 @@ def _normalize_tool_args(args: Any) -> dict[str, Any]:
 def build_structured_run_log_entry(
     user_prompt: str | Sequence[UserContent] | None,
     result: Any,
+    *,
+    model_name: str | None = None,
 ) -> dict[str, Any]:
     """Build a structured JSON log entry for a single agent run."""
     messages = result.new_messages() if hasattr(result, "new_messages") else []
@@ -327,11 +330,14 @@ def build_structured_run_log_entry(
                 }
             )
 
-    return {
+    entry = {
         "user": user_text,
         "assistant": assistant_text,
         "tool_calls": tool_calls,
     }
+    if usage_metadata := build_result_usage_metadata(result, model_name=model_name):
+        entry.update(usage_metadata)
+    return entry
 
 
 def format_beliefs_for_context(agent: "BDI") -> str:
