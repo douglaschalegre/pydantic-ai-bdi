@@ -42,4 +42,4 @@ build-backend = "hatchling.build"
 packages = ["bdi", "helper"]
 
 [tool.pytest.ini_options]
-addopts = "--cov=bdi --cov=helper --cov-branch --cov-report=term"
+addopts = "--cov=bdi --cov=helper --cov-branch --cov-report=term --cov-report=html"

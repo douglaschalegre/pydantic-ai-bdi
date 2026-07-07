@@ -14,3 +14,4 @@ yarn-error.log*
 
 bdi_agent_log.md
 .coverage
+htmlcov/
