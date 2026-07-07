@@ -3,7 +3,15 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import bdi.execution as execution
-from bdi.schemas import DesireSatisfactionResult, DesireStatus, PlanStatus
+from bdi.schemas import (
+    BeliefExtractionResult,
+    DesireSatisfactionResult,
+    DesireStatus,
+    ExtractedBelief,
+    PlanStatus,
+    PlanStep,
+    StepAssessmentResult,
+)
 
 
 @pytest.mark.asyncio
@@ -129,3 +137,187 @@ def test_extract_latest_tool_result_content_prefers_tool_payload() -> None:
 
     extracted = execution._extract_latest_tool_result_content(cast(Any, step_result))
     assert extracted == "raw instruction content"
+
+
+@pytest.mark.asyncio
+async def test_analyze_step_outcome_without_result_returns_false(stub_agent) -> None:
+    succeeded = await execution.analyze_step_outcome_and_update_beliefs(
+        stub_agent,
+        PlanStep(description="step without result"),
+        None,
+    )
+
+    assert succeeded is False
+    assert stub_agent.run_calls == []
+
+
+@pytest.mark.asyncio
+async def test_analyze_step_outcome_non_tool_assessment_exception_falls_back_to_failure(
+    monkeypatch,
+    stub_agent,
+) -> None:
+    desire = stub_agent.add_desire(
+        desire_id="desire_assessment_error",
+        description="Assessment fallback",
+        status=DesireStatus.ACTIVE,
+    )
+    stub_agent.set_current_intention(
+        desire_id=desire.id,
+        step_descriptions=["describe outcome"],
+    )
+
+    async def run_with_assessment_error(_prompt, *, output_type=None):
+        if output_type is StepAssessmentResult:
+            raise RuntimeError("assessment failed")
+        if output_type is BeliefExtractionResult:
+            return SimpleNamespace(
+                output=BeliefExtractionResult(beliefs=[], explanation="nothing new")
+            )
+        raise AssertionError(f"unexpected output_type: {output_type}")
+
+    monkeypatch.setattr(stub_agent, "run", run_with_assessment_error)
+
+    succeeded = await execution.analyze_step_outcome_and_update_beliefs(
+        stub_agent,
+        PlanStep(description="describe outcome"),
+        SimpleNamespace(output="ambiguous result"),
+    )
+
+    assert succeeded is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool_output", "expected_success"),
+    [
+        ("x" * 80, True),
+        ("error: file not found", False),
+    ],
+)
+async def test_analyze_step_outcome_tool_assessment_exception_uses_output_fallback(
+    monkeypatch,
+    stub_agent,
+    tool_output,
+    expected_success,
+) -> None:
+    desire = stub_agent.add_desire(
+        desire_id="desire_tool_fallback",
+        description="Tool fallback",
+        status=DesireStatus.ACTIVE,
+    )
+    stub_agent.set_current_intention(
+        desire_id=desire.id,
+        step_descriptions=["call tool"],
+    )
+
+    async def run_with_assessment_error(_prompt, *, output_type=None):
+        if output_type is StepAssessmentResult:
+            raise RuntimeError("assessment failed")
+        if output_type is BeliefExtractionResult:
+            return SimpleNamespace(
+                output=BeliefExtractionResult(beliefs=[], explanation="nothing new")
+            )
+        raise AssertionError(f"unexpected output_type: {output_type}")
+
+    monkeypatch.setattr(stub_agent, "run", run_with_assessment_error)
+
+    succeeded = await execution.analyze_step_outcome_and_update_beliefs(
+        stub_agent,
+        PlanStep(description="call tool", is_tool_call=True, tool_name="read_file"),
+        SimpleNamespace(output=tool_output),
+    )
+
+    assert succeeded is expected_success
+
+
+@pytest.mark.asyncio
+async def test_analyze_step_outcome_extends_optional_belief_output(
+    stub_agent,
+) -> None:
+    desire = stub_agent.add_desire(
+        desire_id="desire_belief_output",
+        description="Extract beliefs",
+        status=DesireStatus.ACTIVE,
+    )
+    stub_agent.set_current_intention(
+        desire_id=desire.id,
+        step_descriptions=["inspect repo"],
+    )
+    stub_agent.queue_run_output(
+        StepAssessmentResult(success=True, reason="inspection succeeded")
+    )
+    stub_agent.queue_run_output(
+        BeliefExtractionResult(
+            beliefs=[
+                ExtractedBelief(name="repo_path", value="/tmp/repo", certainty=0.9)
+            ],
+            explanation="repo path found",
+        )
+    )
+    extracted_beliefs = []
+
+    succeeded = await execution.analyze_step_outcome_and_update_beliefs(
+        stub_agent,
+        PlanStep(description="inspect repo"),
+        SimpleNamespace(output="repo is /tmp/repo"),
+        extracted_beliefs_out=extracted_beliefs,
+    )
+
+    assert succeeded is True
+    assert extracted_beliefs == [
+        {"name": "repo_path", "value": "/tmp/repo", "certainty": 0.9}
+    ]
+    assert stub_agent.beliefs.get("repo_path").value == "/tmp/repo"
+
+
+def test_build_retry_context_formats_failure_history() -> None:
+    empty_context = execution.StepRetryContext()
+    assert execution._build_retry_context(empty_context) == ""
+
+    retry_context = execution.StepRetryContext(attempt_number=1)
+    retry_context.record_failure(
+        result_output="file missing",
+        beliefs_extracted=[
+            {"name": "repo_path", "value": "/tmp/repo", "certainty": 0.8}
+        ],
+    )
+
+    formatted = execution._build_retry_context(retry_context)
+
+    assert "PREVIOUS ATTEMPT FAILURES" in formatted
+    assert "Attempt 2: file missing" in formatted
+    assert "Beliefs learned:" in formatted
+    assert "repo_path" in formatted
+
+
+@pytest.mark.asyncio
+async def test_run_step_attempt_tool_prefers_raw_tool_result(
+    monkeypatch,
+    stub_agent,
+) -> None:
+    step_result = SimpleNamespace(
+        output="model summary",
+        all_messages=lambda: [
+            SimpleNamespace(
+                parts=[SimpleNamespace(tool_call_id="call_1", content=b"raw bytes")]
+            )
+        ],
+    )
+
+    async def run_tool_prompt(_prompt):
+        return step_result
+
+    monkeypatch.setattr(stub_agent, "run", run_tool_prompt)
+
+    result = await execution._run_step_attempt(
+        stub_agent,
+        PlanStep(
+            description="read instructions",
+            is_tool_call=True,
+            tool_name="read_file",
+            tool_params={"path": "/tmp/task.md"},
+        ),
+        execution.StepRetryContext(),
+    )
+
+    assert result.output == "raw bytes"

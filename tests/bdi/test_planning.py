@@ -153,3 +153,118 @@ async def test_planning_ignores_intentions_for_non_pending_desires(stub_agent) -
     assert stub_agent.intentions[0].description == "Do pending work"
     assert pending_desire.status is DesireStatus.ACTIVE
     assert achieved_desire.status is DesireStatus.ACHIEVED
+
+
+@pytest.mark.asyncio
+async def test_planning_returns_without_desires(stub_agent) -> None:
+    await generate_intentions_from_desires(stub_agent)
+
+    assert list(stub_agent.intentions) == []
+    assert stub_agent.run_calls == []
+
+
+@pytest.mark.asyncio
+async def test_planning_returns_when_intention_already_exists(stub_agent) -> None:
+    desire = stub_agent.add_desire(
+        desire_id="desire_active",
+        description="Active work",
+        status=DesireStatus.PENDING,
+    )
+    intention = stub_agent.set_current_intention(
+        desire_id=desire.id,
+        step_descriptions=["existing step"],
+    )
+
+    await generate_intentions_from_desires(stub_agent)
+
+    assert list(stub_agent.intentions) == [intention]
+    assert stub_agent.run_calls == []
+    assert desire.status is DesireStatus.PENDING
+
+
+@pytest.mark.asyncio
+async def test_planning_returns_without_pending_desires(stub_agent) -> None:
+    stub_agent.add_desire(
+        desire_id="desire_done",
+        description="Done work",
+        status=DesireStatus.ACHIEVED,
+    )
+
+    await generate_intentions_from_desires(stub_agent)
+
+    assert list(stub_agent.intentions) == []
+    assert stub_agent.run_calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "planner_output",
+    [None, HighLevelIntentionList(intentions=[])],
+)
+async def test_planning_returns_when_llm_generates_no_intentions(
+    stub_agent,
+    planner_output,
+) -> None:
+    desire = stub_agent.add_desire(
+        desire_id="desire_pending",
+        description="Pending work",
+        status=DesireStatus.PENDING,
+    )
+    stub_agent.queue_run_output(planner_output)
+
+    await generate_intentions_from_desires(stub_agent)
+
+    assert list(stub_agent.intentions) == []
+    assert desire.status is DesireStatus.PENDING
+    assert len(stub_agent.run_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_planning_returns_when_llm_call_raises(monkeypatch, stub_agent) -> None:
+    desire = stub_agent.add_desire(
+        desire_id="desire_pending",
+        description="Pending work",
+        status=DesireStatus.PENDING,
+    )
+
+    async def raising_run(*_args, **_kwargs):
+        raise RuntimeError("planner unavailable")
+
+    monkeypatch.setattr(stub_agent, "run", raising_run)
+
+    await generate_intentions_from_desires(stub_agent)
+
+    assert list(stub_agent.intentions) == []
+    assert desire.status is DesireStatus.PENDING
+
+
+@pytest.mark.asyncio
+async def test_planning_returns_when_no_generated_intention_targets_pending_desire(
+    stub_agent,
+) -> None:
+    pending_desire = stub_agent.add_desire(
+        desire_id="desire_pending",
+        description="Pending work",
+        status=DesireStatus.PENDING,
+    )
+    achieved_desire = stub_agent.add_desire(
+        desire_id="desire_done",
+        description="Done work",
+        status=DesireStatus.ACHIEVED,
+    )
+    stub_agent.queue_run_output(
+        HighLevelIntentionList(
+            intentions=[
+                HighLevelIntention(
+                    desire_id=achieved_desire.id,
+                    description="Speculative done work",
+                )
+            ]
+        )
+    )
+
+    await generate_intentions_from_desires(stub_agent)
+
+    assert list(stub_agent.intentions) == []
+    assert pending_desire.status is DesireStatus.PENDING
+    assert achieved_desire.status is DesireStatus.ACHIEVED
