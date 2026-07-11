@@ -2,6 +2,7 @@ import pytest
 
 import voluntas.cycle as cycle
 import voluntas.monitoring as monitoring
+from voluntas.execution import ExecutionOutcome, ExecutionOutcomeKind
 from voluntas.schemas import DesireStatus, PlanStatus, PlanStep, ReconsiderResult
 
 
@@ -116,7 +117,7 @@ async def test_cycle_does_not_plan_pending_desires_while_intention_active(
         raise AssertionError("planning should not run while an intention is active")
 
     async def execute_without_finishing(_agent):
-        return {"hitl_modified_plan": False, "hitl_updated_beliefs": False}
+        return ExecutionOutcome(ExecutionOutcomeKind.STEP_SUCCEEDED)
 
     async def skip_reconsideration(_agent):
         return None
@@ -130,7 +131,7 @@ async def test_cycle_does_not_plan_pending_desires_while_intention_active(
     result = await cycle.bdi_cycle(stub_agent)
 
     assert result == "executed"
-    assert list(stub_agent.intentions) == [active_intention]
+    assert stub_agent.active_intention is active_intention
     assert active_desire.status is DesireStatus.ACTIVE
     assert pending_desire.status is DesireStatus.PENDING
     assert stub_agent.run_calls == []
@@ -154,9 +155,8 @@ async def test_cycle_skips_reconsideration_after_successful_plan_step(
     async def execute_success(_agent):
         plan = intention.active_plan
         step = plan.steps[plan.current_step_index]
-        plan.add_to_history(step, "ok", True, {})
-        plan.advance_current_step(lambda **_kwargs: None, desire_id=desire.id)
-        return {"hitl_modified_plan": False, "hitl_updated_beliefs": False}
+        plan.record_outcome_and_advance(step, "ok", {})
+        return ExecutionOutcome(ExecutionOutcomeKind.STEP_SUCCEEDED)
 
     async def fail_if_reconsideration_runs(_agent):
         raise AssertionError("successful Plan Step progress should not reconsider")
@@ -169,7 +169,7 @@ async def test_cycle_skips_reconsideration_after_successful_plan_step(
     result = await cycle.bdi_cycle(stub_agent)
 
     assert result == "executed"
-    assert list(stub_agent.intentions) == [intention]
+    assert stub_agent.active_intention is intention
     assert intention.active_plan.current_step_index == 1
 
 
@@ -192,9 +192,8 @@ async def test_cycle_reconsiders_after_failed_plan_step(
     async def execute_failure(_agent):
         plan = intention.active_plan
         step = plan.steps[plan.current_step_index]
-        plan.add_to_history(step, "failed", False, {})
-        plan.status = PlanStatus.FAILED
-        return {"hitl_modified_plan": False, "hitl_updated_beliefs": False}
+        plan.record_failure(step, "failed", {})
+        return ExecutionOutcome(ExecutionOutcomeKind.STEP_FAILED)
 
     async def reconsider(_agent):
         nonlocal reconsidered
@@ -225,7 +224,7 @@ async def test_cycle_skips_reconsideration_when_hitl_modified_plan(
     )
 
     async def execute_with_hitl_update(_agent):
-        return {"hitl_modified_plan": True, "hitl_updated_beliefs": True}
+        return ExecutionOutcome(ExecutionOutcomeKind.PLAN_MODIFIED, True)
 
     async def fail_if_reconsideration_runs(_agent):
         raise AssertionError("HITL-modified plans should not reconsider immediately")
@@ -240,12 +239,12 @@ async def test_cycle_skips_reconsideration_when_hitl_modified_plan(
     result = await cycle.bdi_cycle(stub_agent)
 
     assert result == "executed"
-    assert list(stub_agent.intentions) == [intention]
+    assert stub_agent.active_intention is intention
     assert desire.status is DesireStatus.ACTIVE
 
 
 @pytest.mark.asyncio
-async def test_cycle_skips_reconsideration_for_completed_current_plan(
+async def test_cycle_reconsiders_completed_unsatisfied_current_plan(
     monkeypatch,
     stub_agent,
 ) -> None:
@@ -262,22 +261,26 @@ async def test_cycle_skips_reconsideration_for_completed_current_plan(
     async def execute_and_leave_completed_plan(_agent):
         intention.active_plan.current_step_index = len(intention.active_plan.steps)
         intention.active_plan.status = PlanStatus.COMPLETED
-        return {"hitl_modified_plan": False, "hitl_updated_beliefs": False}
+        return ExecutionOutcome(ExecutionOutcomeKind.PLAN_COMPLETED)
 
-    async def fail_if_reconsideration_runs(_agent):
-        raise AssertionError("completed current plans should not reconsider")
+    reconsidered = False
+
+    async def record_reconsideration(_agent):
+        nonlocal reconsidered
+        reconsidered = True
 
     monkeypatch.setattr(cycle, "execute_intentions", execute_and_leave_completed_plan)
     monkeypatch.setattr(
         cycle,
         "reconsider_current_intention",
-        fail_if_reconsideration_runs,
+        record_reconsideration,
     )
 
     result = await cycle.bdi_cycle(stub_agent)
 
     assert result == "executed"
-    assert list(stub_agent.intentions) == [intention]
+    assert reconsidered is True
+    assert stub_agent.active_intention is intention
     assert intention.active_plan.status is PlanStatus.COMPLETED
 
 
@@ -308,7 +311,7 @@ async def test_cycle_handles_planning_that_produces_no_intention(
     result = await cycle.bdi_cycle(stub_agent)
 
     assert result == "executed"
-    assert list(stub_agent.intentions) == []
+    assert stub_agent.active_intention is None
     assert desire.status is DesireStatus.PENDING
 
 
@@ -350,4 +353,4 @@ async def test_reconsideration_prompt_is_plan_aware_on_failure_path(stub_agent) 
     assert "remaining step" in prompt
     assert "known_fact: current" in prompt
     assert desire.status is DesireStatus.ACTIVE
-    assert len(stub_agent.intentions) == 1
+    assert stub_agent.active_intention is intention

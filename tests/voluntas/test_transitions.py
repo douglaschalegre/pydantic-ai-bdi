@@ -29,8 +29,7 @@ async def test_reconsider_replace_plan_preserves_intention_and_desire_commitment
 
     await reconsider_current_intention(stub_agent)
 
-    assert len(stub_agent.intentions) == 1
-    assert stub_agent.intentions[0] is intention
+    assert stub_agent.active_intention is intention
     assert desire.status is DesireStatus.ACTIVE
     assert intention.active_plan.status is PlanStatus.ACTIVE
     assert intention.active_plan.current_step_index == 0
@@ -74,8 +73,7 @@ async def test_reconsider_repair_plan_preserves_completed_steps_and_history(
 
     await reconsider_current_intention(stub_agent)
 
-    assert len(stub_agent.intentions) == 1
-    assert stub_agent.intentions[0] is intention
+    assert stub_agent.active_intention is intention
     assert desire.status is DesireStatus.ACTIVE
     assert intention.active_plan.status is PlanStatus.ACTIVE
     assert intention.active_plan.current_step_index == 1
@@ -107,7 +105,7 @@ async def test_reconsider_fail_desire_is_separate_terminal_outcome(stub_agent) -
 
     await reconsider_current_intention(stub_agent)
 
-    assert len(stub_agent.intentions) == 0
+    assert stub_agent.active_intention is None
     assert desire.status is DesireStatus.FAILED
 
 
@@ -128,6 +126,5 @@ async def test_reconsider_valid_plan_keeps_current_intention(stub_agent) -> None
 
     await reconsider_current_intention(stub_agent)
 
-    assert len(stub_agent.intentions) == 1
-    assert stub_agent.intentions[0] is intention
+    assert stub_agent.active_intention is intention
     assert desire.status is DesireStatus.ACTIVE

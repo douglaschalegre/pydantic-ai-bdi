@@ -4,7 +4,6 @@ This module contains the main BDI agent class that orchestrates all BDI componen
 beliefs, desires, intentions, planning, execution, monitoring, and human-in-the-loop.
 """
 
-from collections import deque
 from collections.abc import Sequence
 import json
 from pathlib import Path
@@ -26,7 +25,13 @@ from pydantic_ai.tools import BuiltinToolFunc, DeferredToolResults
 from pydantic_ai.toolsets import AbstractToolset
 
 from voluntas._utils import bcolors
-from voluntas.schemas import BeliefSet, Desire, BeliefExtractionResult, generate_desire_id
+from voluntas.schemas import (
+    BeliefExtractionResult,
+    BeliefSet,
+    Desire,
+    Intention,
+    generate_desire_id,
+)
 from voluntas.belief_updates import update_beliefs_from_desire_extraction
 from voluntas.errors import is_validation_output_error
 from voluntas.logging import (
@@ -69,7 +74,7 @@ class BDI(Agent, Generic[T]):
         super().__init__(*args, output_retries=output_retries, **kwargs)
         self.beliefs = BeliefSet()
         self.desires: List[Desire] = []
-        self.intentions: deque = deque()
+        self.active_intention: Intention | None = None
         self.initial_intention_guidance: List[str] = intentions or []
         self._initial_intention_guidance_consumed = False
         self.verbose = verbose
@@ -249,7 +254,7 @@ class BDI(Agent, Generic[T]):
             "bdi_beliefs": len(self.beliefs.beliefs),
             "bdi_desires": len(self.desires),
             "bdi_desire_statuses": desire_statuses,
-            "bdi_intentions": len(self.intentions),
+            "bdi_intentions": int(self.active_intention is not None),
         }
 
     def _record_usage(self, result: AgentRunResult[Any]) -> None:
@@ -361,7 +366,7 @@ class BDI(Agent, Generic[T]):
         """Generate high-level intentions from desires."""
         await generate_intentions_from_desires(self)
 
-    async def execute_intentions(self) -> dict:
+    async def execute_intentions(self):
         """Execute one step of the current intention."""
         return await execute_intentions(self)
 

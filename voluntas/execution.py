@@ -7,13 +7,13 @@ and extracting beliefs from execution results.
 from typing import TYPE_CHECKING, Optional, Dict, List, Any
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
 import traceback
 import json
 from types import SimpleNamespace
 
 from voluntas._utils import bcolors
 from voluntas.schemas import (
-    PlanStatus,
     PlanStep,
     BeliefExtractionResult,
     StepAssessmentResult,
@@ -36,6 +36,29 @@ if TYPE_CHECKING:
 
 # Fixed retry configuration - opinionated approach
 MAX_STEP_RETRIES = 2  # Total of 3 attempts per step
+
+
+class ExecutionOutcomeKind(str, Enum):
+    NO_INTENTION = "no_intention"
+    STEP_SUCCEEDED = "step_succeeded"
+    STEP_FAILED = "step_failed"
+    PLAN_MODIFIED = "plan_modified"
+    PLAN_COMPLETED = "plan_completed"
+    EXCEPTION = "exception"
+
+
+@dataclass(frozen=True)
+class ExecutionOutcome:
+    kind: ExecutionOutcomeKind
+    hitl_updated_beliefs: bool = False
+
+    @property
+    def should_reconsider(self) -> bool:
+        return self.kind in {
+            ExecutionOutcomeKind.STEP_FAILED,
+            ExecutionOutcomeKind.EXCEPTION,
+            ExecutionOutcomeKind.PLAN_COMPLETED,
+        }
 
 
 @dataclass
@@ -174,7 +197,9 @@ async def analyze_step_outcome_and_update_beliefs(
         )
 
     # Get history context
-    intention = agent.intentions[0]
+    intention = agent.active_intention
+    if intention is None:
+        return False
     history_context = generate_history_context(intention)
 
     # --- Success Assessment (using LLM) ---
@@ -272,7 +297,6 @@ async def analyze_step_outcome_and_update_beliefs(
 
     # Update the belief set with extracted beliefs
     if extracted_beliefs:
-        intention = agent.intentions[0]
         plan = intention.active_plan
         print(
             f"{bcolors.BELIEF}  Processing {len(extracted_beliefs)} extracted belief(s).{bcolors.ENDC}"
@@ -291,10 +315,6 @@ async def analyze_step_outcome_and_update_beliefs(
             print(f"{bcolors.SYSTEM}  No beliefs extracted.{bcolors.ENDC}")
 
     return step_success
-
-
-def _default_hitl_info() -> Dict[str, bool]:
-    return {"hitl_modified_plan": False, "hitl_updated_beliefs": False}
 
 
 def _snapshot_beliefs(agent: "BDI") -> Dict[str, Dict[str, Any]]:
@@ -447,13 +467,11 @@ def _handle_step_execution_exception(
     traceback.print_exc()
 
     plan = intention.active_plan
-    plan.add_to_history(
-        step=current_step,
-        result=f"Exception: {str(error)}",
-        success=False,
-        beliefs_updated=_snapshot_beliefs(agent),
+    plan.record_failure(
+        current_step,
+        f"Exception: {str(error)}",
+        _snapshot_beliefs(agent),
     )
-    plan.status = PlanStatus.FAILED
 
     print(
         f"{bcolors.WARNING}  Plan marked failed after exception; plan-level reconsideration will decide whether to continue, repair, replace, or fail the Desire.{bcolors.ENDC}"
@@ -468,7 +486,7 @@ async def _run_step_with_retries(
     Optional["AgentRunResult"],
     bool,
     StepRetryContext,
-    Optional[Dict[str, bool]],
+    Optional[ExecutionOutcome],
 ]:
     retry_ctx = StepRetryContext(attempt_number=0)
     step_result: Optional["AgentRunResult"] = None
@@ -519,38 +537,31 @@ async def _run_step_with_retries(
 
         except Exception as error:
             _handle_step_execution_exception(agent, intention, current_step, error)
-            return None, False, retry_ctx, _default_hitl_info()
+            return None, False, retry_ctx, ExecutionOutcome(ExecutionOutcomeKind.EXCEPTION)
 
     return step_result, step_succeeded, retry_ctx, None
 
 
-def _record_step_outcome(
-    agent: "BDI",
-    intention,
-    current_step: PlanStep,
-    step_result: Optional["AgentRunResult"],
-    step_succeeded: bool,
-) -> None:
-    intention.active_plan.add_to_history(
-        step=current_step,
-        result=step_result.output if step_result else "No result",
-        success=step_succeeded,
-        beliefs_updated=_snapshot_beliefs(agent),
-    )
-
-
-async def _handle_successful_step(agent: "BDI", intention) -> None:
+async def _handle_successful_step(
+    agent: "BDI", intention, current_step: PlanStep, result: str
+) -> ExecutionOutcome:
     plan = intention.active_plan
-    plan.advance_current_step(
-        lambda **kwargs: log_states(agent, **kwargs),
-        desire_id=intention.desire_id,
+    completed = plan.record_outcome_and_advance(
+        current_step, result, _snapshot_beliefs(agent)
     )
 
-    if plan.is_complete():
+    if completed:
         print(
             f"{bcolors.INTENTION}Completed final step. Intention for desire '{intention.desire_id}' finished.{bcolors.ENDC}"
         )
         await complete_intention_and_update_desire(agent, intention)
+        return ExecutionOutcome(ExecutionOutcomeKind.PLAN_COMPLETED)
+    log_states(
+        agent,
+        types=["intentions"],
+        message=f"Plan for desire '{intention.desire_id}' advanced to Plan Step {plan.current_step_index + 1}",
+    )
+    return ExecutionOutcome(ExecutionOutcomeKind.STEP_SUCCEEDED)
 
 
 async def _handle_failed_step(
@@ -559,7 +570,7 @@ async def _handle_failed_step(
     current_step: PlanStep,
     step_result: Optional["AgentRunResult"],
     retry_ctx: StepRetryContext,
-) -> Dict[str, bool]:
+) -> ExecutionOutcome:
     plan = intention.active_plan
     print(
         f"{bcolors.WARNING}  Plan Step {plan.current_step_index + 1} failed analysis after {retry_ctx.attempt_number} attempt(s). Intention progress paused.{bcolors.ENDC}"
@@ -588,20 +599,24 @@ async def _handle_failed_step(
         print(
             f"{bcolors.SYSTEM}  HITL intervention successful. Step will be retried in next cycle.{bcolors.ENDC}"
         )
-        return {
-            "hitl_modified_plan": True,
-            "hitl_updated_beliefs": hitl_updated_beliefs,
-        }
+        return ExecutionOutcome(
+            ExecutionOutcomeKind.PLAN_MODIFIED,
+            hitl_updated_beliefs=hitl_updated_beliefs,
+        )
 
     log_states(agent, ["beliefs"])
-    plan.status = PlanStatus.FAILED
+    plan.record_failure(
+        current_step,
+        step_result.output if step_result else "No result",
+        _snapshot_beliefs(agent),
+    )
     print(
         f"{bcolors.WARNING}  Plan marked failed; plan-level reconsideration will decide whether to continue, repair, replace, or fail the Desire.{bcolors.ENDC}"
     )
-    return _default_hitl_info()
+    return ExecutionOutcome(ExecutionOutcomeKind.STEP_FAILED)
 
 
-async def execute_intentions(agent: "BDI") -> Dict:
+async def execute_intentions(agent: "BDI") -> ExecutionOutcome:
     """Execute one step of the current intention, analyze outcome, and handle success/failure.
 
     Does NOT proceed to the next step if the current step fails analysis.
@@ -614,21 +629,23 @@ async def execute_intentions(agent: "BDI") -> Dict:
         - 'hitl_modified_plan': bool - whether HITL modified the plan this execution
         - 'hitl_updated_beliefs': bool - whether HITL updated beliefs
     """
-    if not agent.intentions:
+    if agent.active_intention is None:
         print(f"{bcolors.SYSTEM}No intentions to execute.{bcolors.ENDC}")
-        return _default_hitl_info()
+        return ExecutionOutcome(ExecutionOutcomeKind.NO_INTENTION)
 
-    intention = agent.intentions[0]
+    intention = agent.active_intention
     plan = intention.active_plan
     if plan.is_complete():
-        plan.status = PlanStatus.COMPLETED
+        plan.mark_completed()
         print(
             f"{bcolors.INTENTION}Intention for desire '{intention.desire_id}' already completed (found in execute_intentions).{bcolors.ENDC}"
         )
         await complete_intention_and_update_desire(agent, intention)
-        return _default_hitl_info()
+        return ExecutionOutcome(ExecutionOutcomeKind.PLAN_COMPLETED)
 
-    current_step = plan.steps[plan.current_step_index]
+    current_step = plan.current_step()
+    if current_step is None:
+        raise RuntimeError("Active Plan has no current step")
     print(
         f"{bcolors.INTENTION}Executing Desire '{intention.desire_id}' | Intention '{intention.description or '(no description)'}' | Plan status '{plan.status.value}' | Plan Step {plan.current_step_index + 1}/{len(plan.steps)}: {current_step.description}{bcolors.ENDC}"
     )
@@ -642,17 +659,13 @@ async def execute_intentions(agent: "BDI") -> Dict:
     if early_return is not None:
         return early_return
 
-    _record_step_outcome(
-        agent,
-        intention,
-        current_step,
-        step_result,
-        step_succeeded,
-    )
-
     if step_succeeded:
-        await _handle_successful_step(agent, intention)
-        return _default_hitl_info()
+        return await _handle_successful_step(
+            agent,
+            intention,
+            current_step,
+            step_result.output if step_result else "No result",
+        )
 
     return await _handle_failed_step(
         agent,
@@ -665,5 +678,7 @@ async def execute_intentions(agent: "BDI") -> Dict:
 
 __all__ = [
     "analyze_step_outcome_and_update_beliefs",
+    "ExecutionOutcome",
+    "ExecutionOutcomeKind",
     "execute_intentions",
 ]

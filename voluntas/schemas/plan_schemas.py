@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -118,22 +118,42 @@ class Plan(BaseModel):
         self.steps = self.steps[: self.current_step_index] + new_steps
         self.status = PlanStatus.ACTIVE
 
-    def advance_current_step(self, logger: Callable, *, desire_id: str) -> None:
-        """Advance to the next Plan Step and mark the Plan completed when exhausted."""
+    def repair(self, repaired_steps: List[PlanStep]) -> None:
+        """Repair current and future work while preserving progress and history."""
+        self.replace_remaining_steps(repaired_steps)
+
+    def replace(self, replacement_steps: List[PlanStep]) -> None:
+        """Replace executable work while preserving the Plan's execution history."""
+        self.steps = replacement_steps
+        self.current_step_index = 0
+        self.status = PlanStatus.ACTIVE
+
+    def activate(self) -> None:
+        """Make a non-exhausted Plan executable."""
+        if self.is_complete():
+            raise ValueError("A completed Plan cannot be activated without replacement work")
+        self.status = PlanStatus.ACTIVE
+
+    def fail(self) -> None:
+        """Mark this Plan as requiring repair, replacement, or abandonment."""
+        self.status = PlanStatus.FAILED
+
+    def mark_completed(self) -> None:
+        """Mark an exhausted Plan completed."""
+        if not self.is_complete():
+            raise ValueError("A Plan with remaining steps cannot be completed")
+        self.status = PlanStatus.COMPLETED
+
+    def advance_current_step(self) -> bool:
+        """Advance and return whether the Plan became complete."""
+        if self.current_step() is None:
+            raise IndexError("No current Plan Step to advance")
         self.current_step_index += 1
         if self.is_complete():
             self.status = PlanStatus.COMPLETED
-            message = f"Plan for desire '{desire_id}' completed all Plan Steps"
-        else:
-            message = (
-                f"Plan for desire '{desire_id}' advanced to Plan Step "
-                f"{self.current_step_index + 1}"
-            )
-
-        logger(
-            types=["intentions"],
-            message=message,
-        )
+            return True
+        self.status = PlanStatus.ACTIVE
+        return False
 
     def add_to_history(
         self,
@@ -154,9 +174,29 @@ class Plan(BaseModel):
             )
         )
 
+    def record_outcome_and_advance(
+        self,
+        step: PlanStep,
+        result: str,
+        beliefs_updated: Dict[str, Any],
+    ) -> bool:
+        """Record a successful current step and advance atomically."""
+        if step is not self.current_step():
+            raise ValueError("Outcome does not belong to the current Plan Step")
+        self.add_to_history(step, result, True, beliefs_updated)
+        return self.advance_current_step()
 
-IntentionStep = PlanStep
-StepHistory = PlanStepHistory
+    def record_failure(
+        self,
+        step: PlanStep,
+        result: str,
+        beliefs_updated: Dict[str, Any],
+    ) -> None:
+        """Record a failed current step and transition the Plan to failed."""
+        if step is not self.current_step():
+            raise ValueError("Outcome does not belong to the current Plan Step")
+        self.add_to_history(step, result, False, beliefs_updated)
+        self.fail()
 
 
 __all__ = [
@@ -164,6 +204,4 @@ __all__ = [
     "PlanStep",
     "PlanStepHistory",
     "Plan",
-    "IntentionStep",
-    "StepHistory",
 ]

@@ -52,7 +52,7 @@ async def test_reconsider_returns_without_intentions(stub_agent) -> None:
 
 
 @pytest.mark.asyncio
-async def test_reconsider_returns_when_current_plan_is_complete(stub_agent) -> None:
+async def test_reconsider_repairs_completed_unsatisfied_plan(stub_agent) -> None:
     desire = stub_agent.add_desire(
         desire_id="desire_complete",
         description="Already complete",
@@ -63,11 +63,19 @@ async def test_reconsider_returns_when_current_plan_is_complete(stub_agent) -> N
         step_descriptions=["done"],
     )
     intention.active_plan.current_step_index = len(intention.active_plan.steps)
+    stub_agent.queue_run_output(
+        ReconsiderResult(
+            action="replace_plan",
+            reason="more work required",
+            plan_steps=[PlanStep(description="finish remaining work")],
+        )
+    )
 
     await monitoring.reconsider_current_intention(stub_agent)
 
-    assert stub_agent.run_calls == []
-    assert list(stub_agent.intentions) == [intention]
+    assert len(stub_agent.run_calls) == 1
+    assert stub_agent.active_intention is intention
+    assert intention.active_plan.current_step().description == "finish remaining work"
 
 
 @pytest.mark.asyncio
@@ -89,7 +97,7 @@ async def test_reconsider_continues_when_llm_returns_no_structured_result(
     await monitoring.reconsider_current_intention(stub_agent)
 
     assert intention.active_plan.status is PlanStatus.ACTIVE
-    assert list(stub_agent.intentions) == [intention]
+    assert stub_agent.active_intention is intention
     assert desire.status is DesireStatus.ACTIVE
 
 
@@ -114,7 +122,7 @@ async def test_reconsider_replans_when_repair_or_replace_has_no_plan_steps(
 
     await monitoring.reconsider_current_intention(stub_agent)
 
-    assert list(stub_agent.intentions) == []
+    assert stub_agent.active_intention is None
     assert desire.status is DesireStatus.PENDING
     assert intention.active_plan.status is PlanStatus.FAILED
 
@@ -140,7 +148,7 @@ async def test_reconsider_unknown_action_replans_conservatively(stub_agent) -> N
 
     await monitoring.reconsider_current_intention(stub_agent)
 
-    assert list(stub_agent.intentions) == []
+    assert stub_agent.active_intention is None
     assert desire.status is DesireStatus.PENDING
     assert intention.active_plan.status is PlanStatus.FAILED
 
@@ -167,7 +175,7 @@ async def test_reconsider_exception_keeps_plan_available_for_next_cycle(
 
     await monitoring.reconsider_current_intention(stub_agent)
 
-    assert list(stub_agent.intentions) == [intention]
+    assert stub_agent.active_intention is intention
     assert desire.status is DesireStatus.ACTIVE
     assert intention.active_plan.status is PlanStatus.ACTIVE
 
@@ -201,7 +209,7 @@ async def test_reconsider_repairs_remaining_steps_and_preserves_history(
 
     await monitoring.reconsider_current_intention(stub_agent)
 
-    assert list(stub_agent.intentions) == [intention]
+    assert stub_agent.active_intention is intention
     assert [step.description for step in plan.steps] == ["completed", "repaired step"]
     assert plan.current_step_index == 1
     assert plan.status is PlanStatus.ACTIVE
