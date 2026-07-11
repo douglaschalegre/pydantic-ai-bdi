@@ -12,8 +12,8 @@ from pydantic_ai.mcp import MCPServerStdio  # noqa: F401
 
 from litellm_proxy import create_litellm_model
 from voluntas import BDI, BDIUsageTracker
-from voluntas.cycle import is_final_cycle_status
 from voluntas.schemas import DesireStatus
+from runners.bdi import SUCCESS_OUTCOMES, drive_bdi_cycles
 from sbench_toy.config import RunConfig, RunnerConfigError, get_task_path, parse_config
 from sbench_toy.tools import run_command
 
@@ -22,7 +22,6 @@ load_dotenv()
 
 MAX_CYCLES = 30
 CYCLE_SLEEP_SECONDS = 2.0
-SUCCESS_OUTCOMES = frozenset({DesireStatus.ACHIEVED.value, "terminal"})
 EXIT_SUCCESS = 0
 EXIT_TASK_FAILURE = 1
 EXIT_CONFIG_ERROR = 2
@@ -93,7 +92,7 @@ def _summarize_bdi_agent(agent: BDI | None) -> dict[str, object] | None:
     beliefs = getattr(agent, "beliefs", None)
     belief_items = getattr(beliefs, "beliefs", {}) if beliefs is not None else {}
     desires = getattr(agent, "desires", []) or []
-    intentions = getattr(agent, "intentions", []) or []
+    active_intention = getattr(agent, "active_intention", None)
 
     return {
         "cycle_count": getattr(agent, "cycle_count", None),
@@ -105,7 +104,7 @@ def _summarize_bdi_agent(agent: BDI | None) -> dict[str, object] | None:
             }
             for desire in desires
         ],
-        "intentions": len(intentions),
+        "intentions": int(active_intention is not None),
     }
 
 
@@ -128,20 +127,16 @@ async def run_task(model: object, task_path: Path, config: RunConfig) -> str:
             usage_tracker=usage_tracker,
         )
         async with agent.run_mcp_servers():
-            for cycle in range(1, MAX_CYCLES + 1):
-                cycles_run = cycle
-                print(f"Cycle {cycle}/{MAX_CYCLES}")
-                cycle_status = await agent.bdi_cycle()
-
-                desire_status = agent.desires[0].status if agent.desires else None
-                if desire_status in (DesireStatus.ACHIEVED, DesireStatus.FAILED):
-                    outcome = desire_status.value
-                    break
-                if is_final_cycle_status(cycle_status):
-                    outcome = cycle_status
-                    break
-
-                await asyncio.sleep(CYCLE_SLEEP_SECONDS)
+            summary = await drive_bdi_cycles(
+                agent,
+                max_cycles=MAX_CYCLES,
+                sleep_seconds=CYCLE_SLEEP_SECONDS,
+                progress_callback=lambda event: print(
+                    f"Cycle {event.cycle}/{event.max_cycles}"
+                ),
+            )
+            cycles_run = summary.cycles_run
+            outcome = summary.outcome
     except Exception as exc:
         outcome = "error"
         print(f"[ERROR] Task {task_slug} failed: {exc}")
