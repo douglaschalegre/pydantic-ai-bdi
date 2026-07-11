@@ -117,6 +117,34 @@ export LITELLM_MODEL=gpt-5.3-codex
 
 The value of `LITELLM_MODEL` must match a model alias configured in the proxy.
 
+## Automated releases
+
+Releases are selected by applying exactly one of these labels to a pull request
+before it is merged into `main`:
+
+- `release:patch` bumps `0.1.0` to `0.1.1`.
+- `release:minor` bumps `0.1.0` to `0.2.0`.
+- `release:major` bumps `0.1.0` to `1.0.0`.
+
+After the merge, the release workflow updates the package version and lockfile,
+runs lint and tests, builds and validates the distributions, creates a release
+commit and tag, and publishes to PyPI. A merged pull request without a release
+label does not publish anything. Multiple release labels make the workflow fail
+instead of choosing a version implicitly.
+
+One-time repository setup is required:
+
+1. Create the three labels listed above.
+2. Create a GitHub environment named `pypi`.
+3. Add a PyPI Trusted Publisher for owner `douglaschalegre`, repository
+   `voluntas`, workflow `release.yml`, and environment `pypi`.
+4. Allow GitHub Actions to write repository contents, and ensure the `main`
+   branch rules allow the workflow to push its release commit and tag.
+
+The `pypi` environment can have required reviewers if publishing should wait
+for a final approval. Without reviewers, publishing proceeds automatically
+after the labeled pull request is merged.
+
 ## License
 
 Voluntas is released under the MIT license.
