@@ -12,7 +12,6 @@ from pydantic_ai.mcp import MCPServerStdio  # noqa: F401
 
 from litellm_proxy import create_litellm_model
 from voluntas import BDI, BDIUsageTracker
-from voluntas.schemas import DesireStatus
 from runners.bdi import SUCCESS_OUTCOMES, drive_bdi_cycles
 from sbench_toy.config import RunConfig, RunnerConfigError, get_task_path, parse_config
 from sbench_toy.tools import run_command
@@ -54,6 +53,7 @@ def create_agent(
         enable_human_in_the_loop=False,
         usage_tracker=usage_tracker,
         emit_run_events_to_stdout=True,
+        stream_model_requests=True,
         mcp_servers=[
             # MCPServerStdio(
             #     "npx",
