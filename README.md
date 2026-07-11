@@ -132,15 +132,6 @@ commit and tag, and publishes to PyPI. A merged pull request without a release
 label does not publish anything. Multiple release labels make the workflow fail
 instead of choosing a version implicitly.
 
-One-time repository setup is required:
-
-1. Create the three labels listed above.
-2. Create a GitHub environment named `pypi`.
-3. Add a PyPI Trusted Publisher for owner `douglaschalegre`, repository
-   `voluntas`, workflow `release.yml`, and environment `pypi`.
-4. Allow GitHub Actions to write repository contents, and ensure the `main`
-   branch rules allow the workflow to push its release commit and tag.
-
 The `pypi` environment can have required reviewers if publishing should wait
 for a final approval. Without reviewers, publishing proceeds automatically
 after the labeled pull request is merged.
