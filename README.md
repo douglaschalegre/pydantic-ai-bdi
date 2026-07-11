@@ -1,180 +1,122 @@
-# Pydantic AI BDI Framework
+# Voluntas
 
-A sophisticated **BDI (Belief-Desire-Intention) agent framework** built on top of Pydantic AI. BDI is a cognitive architecture for intelligent agents that models how agents reason about their environment and make decisions.
-
-## Overview
-
-This project implements a BDI architecture that extends Pydantic AI's `Agent` class with the classic BDI cognitive model. The framework provides structured reasoning, adaptive planning, and human collaboration capabilities for building autonomous agents that can handle complex, multi-step tasks.
-
-## Core Components
-
-### BDI Agent (`bdi.py`)
-The main `BDI` class extends Pydantic AI's `Agent` class and implements the classic BDI architecture:
-- **Beliefs**: Information the agent holds about the world (managed by `BeliefSet`)
-- **Desires**: High-level goals the agent wants to achieve  
-- **Intentions**: Concrete plans of action (sequences of steps) to fulfill desires
-
-### Data Schemas (`schemas.py`)
-Defines the core data structures using Pydantic models:
-- `Belief`: Represents facts the agent knows (with certainty, source, timestamp)
-- `Desire`: High-level goals with priority and status tracking
-- `Intention`: Structured plans containing sequential `IntentionStep` objects
-- `IntentionStep`: Individual actionable steps that can be either tool calls or descriptive tasks
-
-## Key Features
-
-### 1. Single-Stage Planning
-The agent converts desires into high-level intentions using LLM reasoning. Each intention is executed as one descriptive step so the execution agent can use tools directly instead of following an over-granular pre-expanded plan.
-
-### 2. Human-in-the-Loop (HITL)
-When a step fails, the agent can:
-- Present the failure context to a human user
-- Accept natural language guidance from the user
-- Use an LLM to interpret the guidance into structured plan modifications
-- Apply various manipulation types (retry, modify, replace, skip, abort, etc.)
-
-### 3. Plan Reconsideration
-After each step execution, the agent evaluates whether the remaining plan is still valid based on:
-- Current beliefs
-- Step execution history
-- Changed circumstances
-
-### 4. MCP Server Integration
-The agent integrates with MCP (Model Context Protocol) servers to access external tools, enabling connection to various external capabilities.
-
-## BDI Reasoning Cycle
-
-The agent runs a continuous reasoning cycle:
-
-1. **Belief Update**: Update beliefs based on action outcomes
-2. **Deliberation**: Check desire statuses and priorities
-3. **Intention Generation**: Create new high-level intentions if needed using single-stage LLM planning
-4. **Intention Execution**: Execute one step of the current plan
-5. **Reconsideration**: Evaluate if the plan should continue or be modified
-
-## Architecture Benefits
-
-This implementation provides:
-
-- **Structured reasoning**: Clear separation of beliefs, desires, and intentions
-- **Adaptive planning**: Can reconsider and modify plans based on outcomes
-- **Human collaboration**: Allows human intervention when automated planning fails
-- **Tool integration**: Seamless connection to external capabilities via MCP
-- **Explainable AI**: Verbose logging makes the agent's reasoning transparent
-- **Type safety**: Built on Pydantic for robust data validation
-
-## Human-in-the-Loop Features
-
-When enabled, the HITL system provides:
-- **Failure Analysis**: Detailed context about why a step failed
-- **Natural Language Guidance**: Users can provide instructions in plain English
-- **LLM Interpretation**: Automatic translation of user guidance into structured actions
-- **Plan Manipulation**: Various ways to modify the current plan:
-  - Retry current step as-is
-  - Modify current step parameters
-  - Replace current step with new ones
-  - Insert new steps before/after current
-  - Skip current step
-  - Abort entire intention
-  - Update beliefs and retry
-
-## Applications
-
-The BDI framework is suitable for:
-
-- **Research assistants**: Conducting multi-step research tasks
-- **Data analysis**: Complex analytical workflows
-- **Content generation**: Multi-stage content creation pipelines
-- **System automation**: Adaptive automation that can handle failures
-- **Decision support**: Structured decision-making processes
-
-## Requirements
-
-- Python 3.10-3.13
-- One of:
-  - An LLM API key
-  - An Ollama server
-  - OpenAI Codex OAuth login (ChatGPT subscription)
+Voluntas is a BDI (Belief-Desire-Intention) agent framework built on top of
+[Pydantic AI](https://ai.pydantic.dev/). It provides structured beliefs,
+desires, intentions, adaptive planning, execution, reconsideration, usage
+tracking, and optional human-in-the-loop intervention.
 
 ## Installation
 
 ```bash
-# Install uv (if not already installed)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-# Or: pip install uv
-
-# Install dependencies
-uv sync
+pip install voluntas
 ```
 
-## OpenAI Codex OAuth Usage
+Or with uv:
 
-This repository includes a separate Codex provider/model API that authenticates with OpenAI via Codex OAuth (no `OPENAI_API_KEY` required).
-
-```python
-from codex import CodexModel, CodexProvider
-from bdi import BDI
-
-# First request triggers browser OAuth flow.
-provider = CodexProvider()
-
-# Prefixes like "openai-codex/..." are also accepted.
-model = CodexModel("gpt-5.3-codex", provider=provider)
-
-agent = BDI(
-    model,
-    desires=["Help the user"],
-    intentions=["Be helpful"],
-)
+```bash
+uv add voluntas
 ```
 
-Tokens are stored at `~/.codex_oauth_tokens.json`.
+The distribution name is `voluntas` and the Python import is also `voluntas`.
 
-## Usage Example
+## Quick start
 
 ```python
-# example.py
 import asyncio
-from pydantic_ai.mcp import MCPServerStdio
-from pydantic_ai.models.ollama import OllamaModel
-from bdi import BDI
 
-# Create an MCP server for git
-git_server = MCPServerStdio(
-    "uvx", args=["mcp-server-git"], tool_prefix="git", timeout=60
-)
+from pydantic_ai.models.test import TestModel
+from voluntas import BDI
 
-# Create a BDI agent
-agent = BDI(
-    model=OllamaModel("gemma3:1b", provider=OllamaProvider(base_url=os.getenv("OLLAMA_BASE_URL"))),
-    desires=[
-        "I need a report of the commit history of the pydantic-ai repository"
-    ],
-    intentions=[
-        "Check the commit history of the pydantic-ai repository",
-        "Summarize the commit history",
-        "Create a presentation of the commit history"
-    ],
-    verbose=True,
-    enable_human_in_the_loop=True,
-    mcp_servers=[git_server]  # External tool integration
-)
 
-async def main():
-    async with agent.run_mcp_servers():
-        for i in range(5):
-            print(f"\n===== Cycle {i + 1} =====")
-            await agent.bdi_cycle()
-            await asyncio.sleep(2)
+async def main() -> None:
+    agent = BDI(
+        model=TestModel(),
+        desires=["Prepare a concise project status report"],
+        intentions=["Inspect the available project information"],
+    )
+
+    await agent.bdi_cycle()
+
 
 asyncio.run(main())
 ```
-## Running the example
+
+For production use, replace `TestModel` with a model supported by Pydantic AI
+and install any provider-specific dependencies required by that model.
+
+## Public API
+
+The main agent and commonly used schemas are available from the package root:
+
+```python
+from voluntas import (
+    BDI,
+    BDIUsageTracker,
+    Belief,
+    BeliefSet,
+    Desire,
+    DesireStatus,
+    Intention,
+    Plan,
+)
+```
+
+The complete schema surface is available from `voluntas.schemas`:
+
+```python
+from voluntas.schemas import (
+    BeliefExtractionResult,
+    HighLevelIntentionList,
+    PlanManipulationDirective,
+    ReconsiderResult,
+)
+```
+
+## BDI lifecycle
+
+Each cycle coordinates the following stages:
+
+1. Update beliefs from the current context and action outcomes.
+2. Deliberate over pending desires and their priorities.
+3. Generate a high-level intention when no active intention exists.
+4. Execute one intention step using Pydantic AI tools and toolsets.
+5. Reconsider the remaining plan after failed or changed work.
+
+The framework supports MCP servers through the Pydantic AI integration passed
+to `BDI`, as well as structured logs and aggregate usage tracking through
+`BDIUsageTracker`.
+
+## Human-in-the-loop
+
+Set `enable_human_in_the_loop=True` to allow failures to be presented to a
+human for guidance. The guidance is interpreted into structured actions such
+as retrying, modifying, replacing, inserting, skipping, or aborting plan
+steps.
+
+## Development
+
+Clone the repository and install development dependencies with uv:
 
 ```bash
-uv run python example.py
+uv sync --group dev
+uv run pytest
 ```
+
+The repository also contains SBench and benchmark runners for research and
+experiments. The runners use a local LiteLLM proxy that exposes an
+OpenAI-compatible API; they are development applications and are not part of
+the published `voluntas` package.
+
+Set the proxy connection before running the local examples:
+
+```bash
+export LITELLM_BASE_URL=http://localhost:4000
+export LITELLM_API_KEY=sk-1234
+export LITELLM_MODEL=gpt-5.3-codex
+```
+
+The value of `LITELLM_MODEL` must match a model alias configured in the proxy.
 
 ## License
 
-This project is open source and available under the MIT license.
+Voluntas is released under the MIT license.

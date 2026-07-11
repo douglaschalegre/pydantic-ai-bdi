@@ -226,7 +226,7 @@ async def test_run_task_emits_usage_metadata(
 
     assert outcome == "achieved"
     metadata = json.loads(capsys.readouterr().out.splitlines()[-1])
-    assert metadata["type"] == "bdi.run.completed"
+    assert metadata["type"] == "voluntas.run.completed"
     assert metadata["model"] == "gpt-test"
     assert metadata["task"] == "task-a"
     assert metadata["outcome"] == "achieved"
@@ -239,8 +239,8 @@ async def test_run_task_emits_usage_metadata(
     assert metadata["usage"]["output_tokens"] == 20
     assert metadata["usage"]["total_tokens"] == 120
     assert metadata["cost"]["estimated"] is False
-    assert metadata["bdi"]["beliefs"] == 1
-    assert metadata["bdi"]["desires"] == [
+    assert metadata["voluntas"]["beliefs"] == 1
+    assert metadata["voluntas"]["desires"] == [
         {"id": "desire_1", "status": "achieved"}
     ]
 

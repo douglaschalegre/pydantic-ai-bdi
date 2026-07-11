@@ -10,11 +10,13 @@ The runner creates a `BDI` agent with tools to:
 ## Prerequisites
 
 1. TAC infra containers are running.
-2. Python dependencies are installed in repo root:
+2. A local LiteLLM proxy is running with the Codex model alias configured.
+3. `LITELLM_BASE_URL` and `LITELLM_API_KEY` are set in the environment.
+4. Python dependencies are installed in repo root:
 
 ```bash
 cd /Users/douglas/code/masters/pydantic-ai-bdi
-uv sync
+uv sync --group dev
 ```
 
 ## Modes
@@ -79,7 +81,7 @@ uv run python theagentcompany/run_tac_bdi.py \
 
 ## Useful flags
 
-- `--provider codex|native` (default `codex`)
+- `--provider litellm|native` (default `litellm`)
 - `--model <name>`
 - `--max-cycles <n>`
 - `--log-file <path>`; by default task logs go to `theagentcompany/tac_bdi_agent/<container>/terminal.log`
@@ -95,6 +97,7 @@ uv run python theagentcompany/run_tac_bdi.py \
 ## Notes
 
 - The agent follows TAC Step 2.3 behavior by treating the task as: `Complete the task in /instruction/task.md`.
+- The `litellm` provider connects to the local OpenAI-compatible proxy using `LITELLM_BASE_URL` and `LITELLM_API_KEY`.
 - The script executes commands in the container via `docker exec <container> /bin/bash -lc ...`.
 - In managed modes, `--verbose` now streams `/utils/init.sh` output live while the runner is waiting for readiness.
 - If Playwright MCP writes `current.png`, the runner archives it after each cycle into `theagentcompany/tac-screenshots/<task-slug>/`.

@@ -1,4 +1,4 @@
-# pydantic-ai-bdi — AI Context Map
+# voluntas — AI Context Map
 
 > **Stack:** raw-http | none | unknown | python
 
@@ -10,19 +10,19 @@
 
 # Libraries
 
-- `bdi/agent.py` — class BDI
-- `bdi/belief_updates.py`
+- `voluntas/agent.py` — class BDI
+- `voluntas/belief_updates.py`
   - function update_beliefs_from_desire_extraction: (agent, beliefs) -> BeliefStats
   - function update_beliefs_from_step_extraction: (agent, beliefs, Any]], source) -> BeliefStats
   - function update_beliefs_from_hitl_guidance: (agent, beliefs_to_update, Dict[str, Any]]) -> bool
-- `bdi/cycle.py` — function is_final_cycle_status: (status) -> bool, function bdi_cycle: (agent) -> str
-- `bdi/errors.py` — function is_validation_output_error: (error) -> bool
-- `bdi/execution.py`
+- `voluntas/cycle.py` — function is_final_cycle_status: (status) -> bool, function bdi_cycle: (agent) -> str
+- `voluntas/errors.py` — function is_validation_output_error: (error) -> bool
+- `voluntas/execution.py`
   - function extract_relevant_beliefs_from_result: (agent, step, result, step_success) -> List[Dict[str, Any]]
   - function analyze_step_outcome_and_update_beliefs: (agent, step, result, extracted_beliefs_out, Any]]]) -> bool
   - function execute_intentions: (agent) -> Dict
   - class StepRetryContext
-- `bdi/hitl.py`
+- `voluntas/hitl.py`
   - function build_failure_context: (agent, intention, failed_step, step_result) -> Dict[str, Any]
   - function present_context_to_user: (failure_context, Any]) -> None
   - function summarize_directive_for_user: (directive) -> str
@@ -30,16 +30,16 @@
   - function handle_user_abort_request: (agent, intention) -> None
   - function apply_user_guided_action: (agent, directive, intention) -> Tuple[bool, bool]
   - _...1 more_
-- `bdi/io_helpers.py` — function is_exit_command: (value) -> bool
-- `bdi/logging.py`
+- `voluntas/io_helpers.py` — function is_exit_command: (value) -> bool
+- `voluntas/logging.py`
   - function configure_terminal_output_mirror: (log_file_path, *, strip_ansi) -> None
   - function disable_terminal_output_mirror: () -> None
   - function build_structured_run_log_entry: (user_prompt, result) -> dict[str, Any]
   - function format_beliefs_for_context: (agent) -> str
   - function log_states: (agent, types, "desires", "intentions"]], message) -> None
-- `bdi/monitoring.py` — function generate_history_context: (intention, max_history, include_details) -> str, function reconsider_current_intention: (agent) -> None
-- `bdi/planning.py` — function generate_intentions_from_desires: (agent) -> None
-- `bdi/prompts.py`
+- `voluntas/monitoring.py` — function generate_history_context: (intention, max_history, include_details) -> str, function reconsider_current_intention: (agent) -> None
+- `voluntas/planning.py` — function generate_intentions_from_desires: (agent) -> None
+- `voluntas/prompts.py`
   - function build_initial_belief_extraction_prompt: (desires_text) -> str
   - function build_planning_stage1_prompt: (desires_text, beliefs_text, intention_guidance_text) -> str
   - function build_step_belief_extraction_prompt: (step_description, step_result, step_success, current_beliefs) -> str
@@ -47,7 +47,7 @@
   - function build_desire_satisfaction_prompt: (desire_id, desire_description, completed_intention_description, completed_intention_history, current_beliefs, remaining_intentions_text) -> str
   - function build_tool_execution_prompt: (beliefs_context, retry_context, tool_name, tool_params, Any], is_retry) -> str
   - _...5 more_
-- `bdi/schemas/belief_schemas.py`
+- `voluntas/schemas/belief_schemas.py`
   - class Belief
   - class BeliefSet
   - class ExtractedBelief
@@ -55,25 +55,25 @@
   - class BeliefUpdateDecision
   - class BeliefNameResolutionDecision
   - _...2 more_
-- `bdi/schemas/desire_schemas.py`
+- `voluntas/schemas/desire_schemas.py`
   - function generate_desire_id: (description, timestamp) -> str
   - class DesireStatus
   - class Desire
-- `bdi/schemas/hitl_schemas.py` — class PlanManipulationDirective
-- `bdi/schemas/intention_schemas.py`
+- `voluntas/schemas/hitl_schemas.py` — class PlanManipulationDirective
+- `voluntas/schemas/intention_schemas.py`
   - class Intention
   - class HighLevelIntention
   - class HighLevelIntentionList
-- `bdi/schemas/plan_schemas.py`
+- `voluntas/schemas/plan_schemas.py`
   - class PlanStatus
   - class PlanStep
   - class PlanStepHistory
   - class Plan
-- `bdi/schemas/reconsider_schemas.py`
+- `voluntas/schemas/reconsider_schemas.py`
   - class ReconsiderResult
   - class StepAssessmentResult
   - class DesireSatisfactionResult
-- `bdi/state_transitions.py`
+- `voluntas/state_transitions.py`
   - function update_desire_status: (agent, desire_id, status, *, force) -> bool
   - function remove_intention: (agent, intention) -> RemovalResult
   - function all_desires_terminal: (agent) -> bool
@@ -98,12 +98,12 @@
   - class ExperimentMetrics
   - class MetricCollector
   - class BaseExperiment
-- `benchmarks/experiments/bdi/TEMPLATE.py`
+- `benchmarks/experiments/voluntas/TEMPLATE.py`
   - function build_agent: (model, mcp_servers) -> BDI
   - function get_mcp_servers: (repo_path)
   - function run_agent: (agent, metric_collector)
-- `benchmarks/experiments/bdi/runner.py` — function main: (participant_path) -> None, function run_experiment: (participant_path, experiment_id, task_id, participant_id) -> Dict[str, Any]
-- `benchmarks/experiments/bdi/simple_file_read/experiment-1.py`
+- `benchmarks/experiments/voluntas/runner.py` — function main: (participant_path) -> None, function run_experiment: (participant_path, experiment_id, task_id, participant_id) -> Dict[str, Any]
+- `benchmarks/experiments/voluntas/simple_file_read/experiment-1.py`
   - function build_agent: (model, mcp_servers) -> BDI
   - function get_mcp_servers: (repo_path)
   - function run_agent: (agent, metric_collector)
@@ -152,7 +152,6 @@
   - class UsabilityMetric
   - class UsabilityAssessment
   - class EaseOfUseEvaluator
-- `codex/auth.py`
   - function generate_pkce: () -> PKCEPair
   - function get_token_storage_path: () -> Path
   - function load_stored_tokens: () -> TokenData | None
@@ -160,12 +159,9 @@
   - function clear_stored_tokens: () -> None
   - function is_token_expired: (tokens, buffer_seconds) -> bool
   - _...10 more_
-- `codex/model.py`
   - function normalize_model_name: (model_name) -> str
   - function create_model: (model_name, provider, usage_tracker, settings) -> CodexModel
   - class CodexModel
-- `codex/provider.py` — function create_provider: (usage_tracker) -> CodexProvider, class CodexProvider
-- `helper/util.py` — class bcolors
 - `theagentcompany/progress_report.py` — function build_report: (tasks_file, state_file, log_dir) -> str, function main: () -> int
 - `theagentcompany/run_tac_bdi.py`
   - function task_slug_from_image: (image) -> str
@@ -212,7 +208,6 @@
 # Middleware
 
 ## auth
-- auth — `codex/auth.py`
 
 ---
 
@@ -240,11 +235,7 @@
 
 ## Import Map (who imports what)
 
-- `/constants.py` ← `codex/__init__.py`, `codex/auth.py`, `codex/model.py`, `codex/provider.py`
-- `/auth.py` ← `codex/__init__.py`, `codex/provider.py`
-- `/provider.py` ← `codex/__init__.py`, `codex/model.py`
 - `/task_schema.py` ← `benchmarks/tasks/__init__.py`, `benchmarks/tasks/complex_tasks.py`, `benchmarks/tasks/medium_tasks.py`, `benchmarks/tasks/simple_tasks.py`
-- `/model.py` ← `codex/__init__.py`
 - `/base_agent.py` ← `benchmarks/agents/__init__.py`
 - `/bdi_agent.py` ← `benchmarks/agents/__init__.py`
 - `/langgraph_agent.py` ← `benchmarks/agents/__init__.py`

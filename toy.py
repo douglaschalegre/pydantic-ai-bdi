@@ -10,9 +10,10 @@ import time
 from dotenv import load_dotenv
 from pydantic_ai.mcp import MCPServerStdio  # noqa: F401
 
-from bdi import BDI, BDIUsageTracker
-from bdi.cycle import is_final_cycle_status
-from bdi.schemas import DesireStatus
+from litellm_proxy import create_litellm_model
+from voluntas import BDI, BDIUsageTracker
+from voluntas.cycle import is_final_cycle_status
+from voluntas.schemas import DesireStatus
 from sbench_toy.config import RunConfig, RunnerConfigError, get_task_path, parse_config
 from sbench_toy.tools import run_command
 
@@ -28,9 +29,7 @@ EXIT_CONFIG_ERROR = 2
 
 
 def create_model(config: RunConfig):
-    from codex import CodexModel, CodexProvider
-
-    return CodexModel(config.model_name, provider=CodexProvider())
+    return create_litellm_model(config.model_name)
 
 
 def create_agent(
@@ -156,7 +155,7 @@ async def run_task(model: object, task_path: Path, config: RunConfig) -> str:
     print(
         json.dumps(
             {
-                "type": "bdi.run.completed",
+                "type": "voluntas.run.completed",
                 "model": config.model_name,
                 "task": task_slug,
                 "outcome": outcome,
@@ -164,7 +163,7 @@ async def run_task(model: object, task_path: Path, config: RunConfig) -> str:
                 "elapsed_seconds": elapsed_seconds,
                 "usage": usage_tracker.usage_summary(),
                 "cost": usage_tracker.cost_summary(),
-                "bdi": _summarize_bdi_agent(agent),
+                "voluntas": _summarize_bdi_agent(agent),
             },
             ensure_ascii=True,
             sort_keys=True,

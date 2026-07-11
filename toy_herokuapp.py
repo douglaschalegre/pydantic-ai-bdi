@@ -1,21 +1,22 @@
 import asyncio
 from dataclasses import dataclass
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
 from pydantic_ai.mcp import MCPServerStdio
 
-from bdi import BDI
-from bdi.cycle import is_final_cycle_status
-from bdi.schemas import DesireStatus
-from codex import CodexModel, CodexProvider
+from litellm_proxy import create_litellm_model
+from voluntas import BDI
+from voluntas.cycle import is_final_cycle_status
+from voluntas.schemas import DesireStatus
 
 
 load_dotenv()
 
 
 # Hardcoded toy demo configuration (edit these constants to change behavior).
-MODEL_NAME = "gpt-5.3-codex"
+MODEL_NAME = os.getenv("LITELLM_MODEL", "gpt-5.3-codex")
 MAX_CYCLES = 20
 VERBOSE = True
 TASKS_TO_RUN = ["01", "02", "03", "04", "05", "06", "07"]
@@ -218,7 +219,7 @@ def get_primary_desire_status(agent: BDI) -> DesireStatus | None:
     return agent.desires[0].status
 
 
-def create_agent(model: CodexModel, task: HerokuappTask, log_path: Path) -> BDI:
+def create_agent(model: object, task: HerokuappTask, log_path: Path) -> BDI:
     return BDI(
         model,
         desires=[task.desire_prompt],
@@ -230,7 +231,7 @@ def create_agent(model: CodexModel, task: HerokuappTask, log_path: Path) -> BDI:
     )
 
 
-async def run_task(model: CodexModel, task: HerokuappTask, output_path: Path) -> None:
+async def run_task(model: object, task: HerokuappTask, output_path: Path) -> None:
     log_path = output_path / f"herokuapp-task-{task.number}.log"
 
     print(f"\n=== Task {task.number}: {task.title} ===")
@@ -313,8 +314,7 @@ async def main() -> None:
     print(f"Tasks: {', '.join(task.number for task in tasks)}")
     print(f"Raw Logs Directory: {output_path}")
 
-    provider = CodexProvider()
-    model = CodexModel(MODEL_NAME, provider=provider)
+    model = create_litellm_model(MODEL_NAME)
 
     for task in tasks:
         await run_task(model, task, output_path)

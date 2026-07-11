@@ -15,16 +15,19 @@ import threading
 from pathlib import Path
 from typing import Callable, Sequence
 
+from dotenv import load_dotenv
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from bdi import BDI
-from bdi.cycle import is_final_cycle_status
-from codex import CodexModel, CodexProvider
-from pydantic_ai.mcp import MCPServerStdio
+from voluntas import BDI  # noqa: E402
+from voluntas.cycle import is_final_cycle_status  # noqa: E402
+from litellm_proxy import create_litellm_model  # noqa: E402
+from pydantic_ai.mcp import MCPServerStdio  # noqa: E402
 
+load_dotenv()
 
 READY_MARKER = "All services are ready!"
 NO_DEPENDENCIES_MARKER = "No matching services found in dependencies.yml"
@@ -992,15 +995,14 @@ def create_agent(
     *,
     container_name: str,
     model_name: str,
-    use_codex_provider: bool,
+    use_litellm_proxy: bool,
     verbose: bool,
     log_file_path: str | None,
     structured_log_file_path: str | None,
 ) -> BDI:
     model = model_name
-    if use_codex_provider:
-        provider = CodexProvider()
-        model = CodexModel(model_name, provider=provider)
+    if use_litellm_proxy:
+        model = create_litellm_model(model_name)
 
     mcp_servers: list[MCPServerStdio] = [_build_playwright_server()]
 
@@ -1061,7 +1063,7 @@ async def run_managed_task(
     task: ManagedTask,
     *,
     model_name: str,
-    use_codex_provider: bool,
+    use_litellm_proxy: bool,
     verbose: bool,
     log_file_path: str | None,
     structured_log_file_path: str | None,
@@ -1113,9 +1115,9 @@ async def run_managed_task(
         emit("running_init")
         init_callback = None
         if verbose:
-            init_callback = lambda stream_name, line: print(
-                f"[{task.slug}][init][{stream_name}] {line}"
-            )
+            def init_callback(stream_name: str, line: str) -> None:
+                print(f"[{task.slug}][init][{stream_name}] {line}")
+
         init_result = _run_init_in_container(
             container_name=task.slug,
             server_hostname=server_hostname,
@@ -1174,7 +1176,7 @@ async def run_managed_task(
         agent = create_agent(
             container_name=task.slug,
             model_name=model_name,
-            use_codex_provider=use_codex_provider,
+            use_litellm_proxy=use_litellm_proxy,
             verbose=verbose,
             log_file_path=log_file_path,
             structured_log_file_path=structured_log_file_path,
@@ -1489,7 +1491,7 @@ async def run_batch(args: argparse.Namespace) -> int:
             outcome = await run_managed_task(
                 task,
                 model_name=args.model,
-                use_codex_provider=args.provider == "codex",
+                use_litellm_proxy=args.provider == "litellm",
                 verbose=args.verbose,
                 log_file_path=None,
                 structured_log_file_path=str(
@@ -1605,7 +1607,7 @@ async def run_managed_single_task(args: argparse.Namespace) -> int:
         outcome = await run_managed_task(
             task,
             model_name=args.model,
-            use_codex_provider=args.provider == "codex",
+            use_litellm_proxy=args.provider == "litellm",
             verbose=args.verbose,
             log_file_path=str(log_file_path),
             structured_log_file_path=str(structured_log_path),
@@ -1665,7 +1667,7 @@ async def run_manual_container(args: argparse.Namespace) -> int:
     agent = create_agent(
         container_name=args.container,
         model_name=args.model,
-        use_codex_provider=args.provider == "codex",
+        use_litellm_proxy=args.provider == "litellm",
         verbose=args.verbose,
         log_file_path=str(log_file_path),
         structured_log_file_path=str(structured_log_path),
@@ -1746,12 +1748,16 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="With --eval-only and --tasks-file, evaluate only the specified executed task slug",
     )
-    parser.add_argument("--model", default="gpt-5.3-codex", help="Model name")
+    parser.add_argument(
+        "--model",
+        default=os.getenv("LITELLM_MODEL", "gpt-5.3-codex"),
+        help="LiteLLM model alias",
+    )
     parser.add_argument(
         "--provider",
-        choices=["codex", "native"],
-        default="codex",
-        help="Use Codex OAuth provider or pass model string directly to PydanticAI",
+        choices=["litellm", "native"],
+        default="litellm",
+        help="Use the local LiteLLM proxy or pass a model string directly to Pydantic AI",
     )
     parser.add_argument(
         "--max-cycles", type=int, default=100, help="Maximum BDI cycles"
