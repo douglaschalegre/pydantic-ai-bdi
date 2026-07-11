@@ -22,11 +22,7 @@
 
 ## Import Map (who imports what)
 
-- `/constants.py` ← `codex/__init__.py`, `codex/auth.py`, `codex/model.py`, `codex/provider.py`
-- `/auth.py` ← `codex/__init__.py`, `codex/provider.py`
-- `/provider.py` ← `codex/__init__.py`, `codex/model.py`
 - `/task_schema.py` ← `benchmarks/tasks/__init__.py`, `benchmarks/tasks/complex_tasks.py`, `benchmarks/tasks/medium_tasks.py`, `benchmarks/tasks/simple_tasks.py`
-- `/model.py` ← `codex/__init__.py`
 - `/base_agent.py` ← `benchmarks/agents/__init__.py`
 - `/bdi_agent.py` ← `benchmarks/agents/__init__.py`
 - `/langgraph_agent.py` ← `benchmarks/agents/__init__.py`

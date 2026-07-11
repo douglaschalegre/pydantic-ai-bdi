@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Sequence
 from dataclasses import dataclass
+import os
 from pathlib import Path
 
 
@@ -45,7 +46,7 @@ def parse_config(argv: Sequence[str] | None = None) -> RunConfig:
         metavar="TASK",
         help="Single SBench task folder name to run.",
     )
-    parser.add_argument("--model", default=MODEL_NAME)
+    parser.add_argument("--model", default=os.getenv("LITELLM_MODEL", MODEL_NAME))
     parser.add_argument(
         "--command-timeout-seconds",
         type=positive_int,
