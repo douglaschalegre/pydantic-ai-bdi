@@ -135,11 +135,6 @@ commit and tag, and publishes to PyPI. A merged pull request without a release
 label does not publish anything. Multiple release labels make the workflow fail
 instead of choosing a version implicitly.
 
-The separate CI workflow runs Ruff and the complete test suite on Python
-3.10–3.13 for every pull request targeting `main`. Configure the `main` branch
-protection or ruleset to require `Lint` and all `Tests (Python 3.x)` checks so
-GitHub blocks merging until they pass.
-
 The `pypi` environment can have required reviewers if publishing should wait
 for a final approval. Without reviewers, publishing proceeds automatically
 after the labeled pull request is merged.
