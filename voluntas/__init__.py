@@ -13,7 +13,7 @@ Main exports:
 - Belief, BeliefSet, Desire, DesireStatus, Intention, Plan: Core schemas
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 # Main agent class
 from voluntas.agent import BDI
