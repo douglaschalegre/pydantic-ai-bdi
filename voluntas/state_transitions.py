@@ -1,6 +1,5 @@
 """Shared desire lifecycle transitions for intentions and desires."""
 
-from collections import deque
 from typing import TYPE_CHECKING, Literal
 
 from voluntas._utils import bcolors
@@ -13,7 +12,7 @@ if TYPE_CHECKING:
     from voluntas.schemas import Desire, Intention
 
 
-RemovalResult = Literal["current", "queued", "missing"]
+RemovalResult = Literal["current", "missing"]
 TERMINAL_DESIRE_STATUSES = {DesireStatus.ACHIEVED, DesireStatus.FAILED}
 
 
@@ -37,16 +36,11 @@ def update_desire_status(
 
 
 def remove_intention(agent: "BDI", intention: "Intention") -> RemovalResult:
-    """Remove an intention from the queue and report where it was removed from."""
-    if agent.intentions and agent.intentions[0] == intention:
-        agent.intentions.popleft()
+    """Remove the active intention when it matches."""
+    if agent.active_intention == intention:
+        agent.active_intention = None
         return "current"
-
-    try:
-        agent.intentions.remove(intention)
-        return "queued"
-    except ValueError:
-        return "missing"
+    return "missing"
 
 
 def all_desires_terminal(agent: "BDI") -> bool:
@@ -63,27 +57,11 @@ def _find_desire(agent: "BDI", desire_id: str) -> "Desire | None":
     return None
 
 
-def _remaining_intentions_for_desire(
-    agent: "BDI",
-    desire_id: str,
-    *,
-    excluding: "Intention | None" = None,
-) -> list["Intention"]:
-    return [
-        intention
-        for intention in agent.intentions
-        if intention.desire_id == desire_id and intention is not excluding
-    ]
-
-
-def _remove_intentions_for_desire(agent: "BDI", desire_id: str) -> int:
-    original_count = len(agent.intentions)
-    agent.intentions = deque(
-        intention
-        for intention in agent.intentions
-        if intention.desire_id != desire_id
-    )
-    return original_count - len(agent.intentions)
+def _remove_active_intention_for_desire(agent: "BDI", desire_id: str) -> int:
+    if agent.active_intention and agent.active_intention.desire_id == desire_id:
+        agent.active_intention = None
+        return 1
+    return 0
 
 
 def _format_intention_history(intention: "Intention") -> str:
@@ -101,43 +79,19 @@ def _format_intention_history(intention: "Intention") -> str:
     return "\n".join(lines)
 
 
-def _format_remaining_intentions(intentions: list["Intention"]) -> str:
-    if not intentions:
-        return "No remaining Intentions for this Desire."
-
-    lines: list[str] = []
-    for index, intention in enumerate(intentions, start=1):
-        plan = intention.active_plan
-        lines.append(
-            f"{index}. {intention.description or '(no description)'}"
-        )
-        remaining_steps = plan.steps[plan.current_step_index :]
-        if not remaining_steps:
-            lines.append("   - No remaining steps.")
-            continue
-        for step_index, step in enumerate(remaining_steps, start=1):
-            lines.append(f"   - Plan Step {step_index}: {step.description}")
-    return "\n".join(lines)
-
-
 async def assess_desire_satisfaction(
     agent: "BDI",
     intention: "Intention",
 ) -> DesireSatisfactionResult:
     """Run the narrow semantic check for whether a desire is satisfied."""
     desire = _find_desire(agent, intention.desire_id)
-    remaining_intentions = _remaining_intentions_for_desire(
-        agent,
-        intention.desire_id,
-        excluding=intention,
-    )
     prompt = build_desire_satisfaction_prompt(
         intention.desire_id,
         desire.description if desire else "Unknown desire.",
         intention.description or "(no description)",
         _format_intention_history(intention),
         format_beliefs_for_context(agent),
-        _format_remaining_intentions(remaining_intentions),
+        "No remaining Intentions for this Desire.",
     )
 
     try:
@@ -162,37 +116,31 @@ async def assess_desire_satisfaction(
 async def complete_intention_and_update_desire(
     agent: "BDI",
     intention: "Intention",
-) -> None:
+) -> bool:
     """Apply lifecycle rules after a full Intention completes."""
     assessment = await assess_desire_satisfaction(agent, intention)
     reason = assessment.reason or "No reason provided."
 
     if assessment.satisfied:
-        removed_count = _remove_intentions_for_desire(agent, intention.desire_id)
+        removed_count = _remove_active_intention_for_desire(
+            agent, intention.desire_id
+        )
         update_desire_status(agent, intention.desire_id, DesireStatus.ACHIEVED)
         print(
             f"{bcolors.DESIRE}  Desire '{intention.desire_id}' satisfied. "
             f"Removed {removed_count} runnable intention(s). Reason: {reason}{bcolors.ENDC}"
         )
         log_states(agent, ["intentions", "desires"])
-        return
+        return True
 
-    remove_intention(agent, intention)
-    remaining_intentions = _remaining_intentions_for_desire(agent, intention.desire_id)
-    if remaining_intentions:
-        update_desire_status(agent, intention.desire_id, DesireStatus.ACTIVE)
-        print(
-            f"{bcolors.DESIRE}  Desire '{intention.desire_id}' is not satisfied; "
-            f"continuing {len(remaining_intentions)} remaining intention(s). Reason: {reason}{bcolors.ENDC}"
-        )
-    else:
-        update_desire_status(agent, intention.desire_id, DesireStatus.PENDING)
-        print(
-            f"{bcolors.DESIRE}  Desire '{intention.desire_id}' is not satisfied and its plan is exhausted; "
-            f"returning to PENDING for replanning. Reason: {reason}{bcolors.ENDC}"
-        )
+    intention.active_plan.fail()
+    update_desire_status(agent, intention.desire_id, DesireStatus.ACTIVE)
+    print(
+        f"{bcolors.DESIRE}  Desire '{intention.desire_id}' is not satisfied; retaining its Intention for Plan repair or replacement. Reason: {reason}{bcolors.ENDC}"
+    )
 
     log_states(agent, ["intentions", "desires"])
+    return False
 
 
 def replan_desire_for_intention(
@@ -202,8 +150,8 @@ def replan_desire_for_intention(
     reason: str,
 ) -> None:
     """Clear runnable work for an intention's Desire and return it to planning."""
-    intention.active_plan.status = PlanStatus.FAILED
-    removed_count = _remove_intentions_for_desire(agent, intention.desire_id)
+    intention.active_plan.fail()
+    removed_count = _remove_active_intention_for_desire(agent, intention.desire_id)
     update_desire_status(agent, intention.desire_id, DesireStatus.PENDING)
     print(
         f"{bcolors.DESIRE}  Desire '{intention.desire_id}' returned to PENDING for replanning. "
@@ -219,8 +167,8 @@ def fail_desire_for_intention(
     reason: str,
 ) -> None:
     """Fail an intention's Desire and clear all runnable work for it."""
-    intention.active_plan.status = PlanStatus.FAILED
-    removed_count = _remove_intentions_for_desire(agent, intention.desire_id)
+    intention.active_plan.fail()
+    removed_count = _remove_active_intention_for_desire(agent, intention.desire_id)
     update_desire_status(agent, intention.desire_id, DesireStatus.FAILED)
     print(
         f"{bcolors.DESIRE}  Desire '{intention.desire_id}' marked FAILED. "
@@ -243,8 +191,7 @@ def finalize_current_intention(
         desire_status,
         force=force_status_update,
     )
-    if agent.intentions and agent.intentions[0] == intention:
-        agent.intentions.popleft()
+    remove_intention(agent, intention)
     log_states(agent, ["intentions", "desires"])
 
 

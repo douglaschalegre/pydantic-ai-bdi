@@ -11,7 +11,7 @@ from voluntas.schemas import DesireStatus, Desire, generate_desire_id
 from voluntas.io_helpers import is_exit_command
 from voluntas.logging import log_states
 from voluntas.planning import generate_intentions_from_desires
-from voluntas.execution import execute_intentions
+from voluntas.execution import ExecutionOutcome, ExecutionOutcomeKind, execute_intentions
 from voluntas.monitoring import reconsider_current_intention
 from voluntas.state_transitions import all_desires_terminal
 
@@ -53,7 +53,7 @@ async def bdi_cycle(agent: "BDI") -> str:
     """
     agent.cycle_count += 1
 
-    if not agent.intentions and all_desires_terminal(agent):
+    if agent.active_intention is None and all_desires_terminal(agent):
         print(
             f"{bcolors.SYSTEM}All known desires are terminal and no intentions remain. Stopping cleanly.{bcolors.ENDC}"
         )
@@ -99,7 +99,7 @@ async def bdi_cycle(agent: "BDI") -> str:
 
     # 3. Intention Generation (if needed)
     # If we have active/pending desires but no intentions queued, generate them.
-    if active_desires and not agent.intentions:
+    if active_desires and agent.active_intention is None:
         print(
             f"{bcolors.SYSTEM}No current intentions, but active/pending desires exist. Generating intentions...{bcolors.ENDC}"
         )
@@ -108,7 +108,7 @@ async def bdi_cycle(agent: "BDI") -> str:
         if agent.verbose:
             print(f"{bcolors.INTENTION}Current Intentions:{bcolors.ENDC}")
             log_states(agent, ["intentions"])
-        if not agent.intentions:
+        if agent.active_intention is None:
             print(
                 f"{bcolors.SYSTEM}No intentions pending and no active desires require new ones.{bcolors.ENDC}"
             )
@@ -157,50 +157,30 @@ async def bdi_cycle(agent: "BDI") -> str:
             return "idle_prompted"
 
     # 4. Intention Execution (One Step)
-    hitl_info = {"hitl_modified_plan": False, "hitl_updated_beliefs": False}
-    executed_plan = None
-    history_count_before_execution = 0
-    step_index_before_execution = 0
-    if agent.intentions:
-        executed_plan = agent.intentions[0].active_plan
-        history_count_before_execution = len(executed_plan.step_history)
-        step_index_before_execution = executed_plan.current_step_index
-        hitl_info = await execute_intentions(agent)
+    outcome = ExecutionOutcome(ExecutionOutcomeKind.NO_INTENTION)
+    if agent.active_intention is not None:
+        outcome = await execute_intentions(agent)
     else:
         print(f"{bcolors.SYSTEM}No intentions to execute this cycle.{bcolors.ENDC}")
 
     # 5. Reconsideration (Plan Monitoring)
     # After executing a step (successfully or not), reconsider the current plan.
     # SKIP reconsideration if HITL just modified the plan (give it a chance to execute first)
-    if hitl_info.get("hitl_modified_plan", False):
+    if outcome.kind is ExecutionOutcomeKind.PLAN_MODIFIED:
         print(
             f"{bcolors.SYSTEM}  Skipping reconsideration: HITL just modified the plan. Will retry modified step in next cycle.{bcolors.ENDC}"
         )
-        if hitl_info.get("hitl_updated_beliefs", False):
+        if outcome.hitl_updated_beliefs:
             print(
                 f"{bcolors.BELIEF}  Note: Beliefs were updated from HITL guidance and are now persisted.{bcolors.ENDC}"
             )
-    elif agent.intentions:  # Check if an intention still exists
-        current_intention = agent.intentions[0]
-        current_plan = current_intention.active_plan
-        latest_history = (
-            current_plan.step_history[-1]
-            if len(current_plan.step_history) > history_count_before_execution
-            else None
-        )
-        if (
-            executed_plan is current_plan
-            and latest_history
-            and latest_history.success
-            and latest_history.step_number == step_index_before_execution
-        ):
+    elif agent.active_intention is not None:
+        if outcome.kind is ExecutionOutcomeKind.STEP_SUCCEEDED:
             print(
                 f"{bcolors.SYSTEM}  Skipping reconsideration: Plan Step succeeded and Plan progress should continue.{bcolors.ENDC}"
             )
         # Only reconsider if the intention wasn't just completed/removed by execute_intentions
-        elif not current_plan.steps or current_plan.current_step_index < len(
-            current_plan.steps
-        ):
+        elif outcome.should_reconsider:
             await reconsider_current_intention(agent)
         else:
             print(
@@ -211,7 +191,7 @@ async def bdi_cycle(agent: "BDI") -> str:
             f"{bcolors.SYSTEM}  Skipping reconsideration: No intentions remaining.{bcolors.ENDC}"
         )
 
-    if not agent.intentions and all_desires_terminal(agent):
+    if agent.active_intention is None and all_desires_terminal(agent):
         print(f"{bcolors.SYSTEM}--- BDI Cycle End (terminal) ---{bcolors.ENDC}")
         log_states(
             agent,

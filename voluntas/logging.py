@@ -409,11 +409,12 @@ def log_states(
             )
 
     if "intentions" in types:
+        intentions = [agent.active_intention] if agent.active_intention else []
         if agent.verbose:
             intention_str = "\n".join(
                 [
                     f"  - Desire '{i.desire_id}' | Intention: {i.description or '(no description)'} | Plan: {i.active_plan.status.value} | Current Plan Step -> {i.active_plan.steps[i.active_plan.current_step_index].description if i.active_plan.current_step_index < len(i.active_plan.steps) else '(Completed)'} (Step {i.active_plan.current_step_index + 1}/{len(i.active_plan.steps)})"
-                    for i in agent.intentions
+                    for i in intentions
                 ]
             )
             print(
@@ -421,7 +422,7 @@ def log_states(
             )
         else:
             summaries = []
-            for intention in agent.intentions:
+            for intention in intentions:
                 plan = intention.active_plan
                 step_count = len(plan.steps)
                 if step_count:
@@ -441,7 +442,7 @@ def log_states(
                     f"Plan Step {step_number}/{step_count}: {step_description}"
                 )
             print(
-                f"{bcolors.INTENTION}Intentions: {len(agent.intentions)} items"
+                f"{bcolors.INTENTION}Intentions: {len(intentions)} items"
                 f"{(' | ' + ' | '.join(summaries)) if summaries else ''}{bcolors.ENDC}"
             )
 

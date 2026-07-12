@@ -7,6 +7,7 @@ import pytest
 import toy
 from sbench_toy import config as toy_config
 from sbench_toy import tools as toy_tools
+from voluntas.schemas import DesireStatus
 
 
 def make_sbench_root(tmp_path: Path, task_id: str = "task-a") -> Path:
@@ -153,6 +154,7 @@ def test_create_agent_scopes_run_tool_and_usage_tracker(
     assert "log_file_path" not in captured["kwargs"]
     assert captured["kwargs"]["usage_tracker"] is usage_tracker
     assert captured["kwargs"]["emit_run_events_to_stdout"] is True
+    assert captured["kwargs"]["stream_model_requests"] is True
     assert "structured_log_file_path" not in captured["kwargs"]
     assert captured["kwargs"]["mcp_servers"] == []
     assert "Do not read hidden SBench evaluation files" in captured["kwargs"]["desires"][0]
@@ -190,7 +192,7 @@ async def test_run_task_emits_usage_metadata(
         def __init__(self, usage_tracker):
             self.usage_tracker = usage_tracker
             self.beliefs = SimpleNamespace(beliefs={"task": "done"})
-            self.desires = [SimpleNamespace(id="desire_1", status=toy.DesireStatus.ACHIEVED)]
+            self.desires = [SimpleNamespace(id="desire_1", status=DesireStatus.ACHIEVED)]
             self.intentions = []
             self.cycle_count = 1
 

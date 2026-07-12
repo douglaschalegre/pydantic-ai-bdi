@@ -8,7 +8,7 @@ import traceback
 from typing import TYPE_CHECKING
 from datetime import datetime
 from voluntas._utils import bcolors
-from voluntas.schemas import Plan, PlanStatus, PlanStep, ReconsiderResult
+from voluntas.schemas import PlanStep, ReconsiderResult
 from voluntas.prompts import build_reconsideration_prompt
 from voluntas.logging import log_states
 from voluntas.state_transitions import fail_desire_for_intention, replan_desire_for_intention
@@ -101,8 +101,7 @@ def _apply_plan_repair(
 ) -> None:
     """Replace remaining Plan Steps while preserving Intention and history."""
     plan = intention.active_plan
-    plan.steps = plan.steps[: plan.current_step_index] + repaired_steps
-    plan.status = PlanStatus.ACTIVE
+    plan.repair(repaired_steps)
     print(
         f"{bcolors.INTENTION}  Repaired Plan for desire '{intention.desire_id}' while preserving the active Intention. Reason: {reason}{bcolors.ENDC}"
     )
@@ -117,12 +116,7 @@ def _apply_plan_replacement(
     reason: str,
 ) -> None:
     """Replace the active Plan while preserving Intention and prior history."""
-    previous_history = intention.active_plan.step_history
-    intention.active_plan = Plan(
-        steps=replacement_steps,
-        status=PlanStatus.ACTIVE,
-        step_history=previous_history,
-    )
+    intention.active_plan.replace(replacement_steps)
     print(
         f"{bcolors.INTENTION}  Replaced Plan for desire '{intention.desire_id}' while preserving the active Intention. Reason: {reason}{bcolors.ENDC}"
     )
@@ -138,16 +132,13 @@ async def reconsider_current_intention(agent: "BDI") -> None:
     Args:
         agent: The BDI agent instance
     """
-    if not agent.intentions:
+    if agent.active_intention is None:
         if agent.verbose:
             print(f"{bcolors.SYSTEM}No intentions to re-consider.{bcolors.ENDC}")
         return
 
-    intention = agent.intentions[0]
+    intention = agent.active_intention
     plan = intention.active_plan
-
-    if plan.is_complete():
-        return
 
     print(
         f"{bcolors.SYSTEM}  Reconsidering intention for desire '{intention.desire_id}'...{bcolors.ENDC}"
@@ -193,7 +184,7 @@ async def reconsider_current_intention(agent: "BDI") -> None:
             reason = reconsider_result.output.reason or "No reason provided."
 
         if action == "continue":
-            plan.status = PlanStatus.ACTIVE
+            plan.activate()
             if agent.verbose:
                 print(
                     f"{bcolors.SYSTEM}  LLM Assessment: Continue Plan. Reason: {reason}{bcolors.ENDC}"

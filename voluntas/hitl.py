@@ -412,10 +412,7 @@ async def apply_user_guided_action(
                 )
                 return False
 
-            plan.advance_current_step(
-                lambda **kwargs: log_states(agent, **kwargs),
-                desire_id=intention.desire_id,
-            )
+            plan.advance_current_step()
             if plan.is_complete():
                 print(
                     f"{bcolors.INTENTION}  Skipping step completed intention for desire '{intention.desire_id}'.{bcolors.ENDC}"

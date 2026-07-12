@@ -10,7 +10,7 @@ class StubBDIAgent:
     def __init__(self):
         self.beliefs = BeliefSet()
         self.desires = []
-        self.intentions = deque()
+        self.active_intention = None
         self.initial_intention_guidance = []
         self.enable_human_in_the_loop = False
         self.verbose = False
@@ -52,7 +52,7 @@ class StubBDIAgent:
                 current_step_index=current_step,
             ),
         )
-        self.intentions = deque([intention])
+        self.active_intention = intention
         return intention
 
     def queue_run_output(self, output) -> None:

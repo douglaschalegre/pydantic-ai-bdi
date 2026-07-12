@@ -65,8 +65,8 @@ async def test_cycle_preserves_one_active_intention_through_write_and_verificati
     assert first_result == "executed"
     assert adoption_calls == 1
     assert desire.status is DesireStatus.ACTIVE
-    assert len(stub_agent.intentions) == 1
-    intention = stub_agent.intentions[0]
+    assert stub_agent.active_intention is not None
+    intention = stub_agent.active_intention
     assert intention.desire_id == desire.id
     assert intention.active_plan.status is PlanStatus.ACTIVE
     assert intention.active_plan.current_step_index == 1
@@ -90,7 +90,7 @@ async def test_cycle_preserves_one_active_intention_through_write_and_verificati
     assert second_result == "terminal"
     assert adoption_calls == 1
     assert desire.status is DesireStatus.ACHIEVED
-    assert len(stub_agent.intentions) == 0
+    assert stub_agent.active_intention is None
     assert intention.active_plan.status is PlanStatus.COMPLETED
     assert intention.active_plan.current_step_index == 2
     assert [
@@ -152,10 +152,9 @@ async def test_execute_intentions_batches_belief_resolution_from_step_extraction
 
     result = await execution.execute_intentions(stub_agent)
 
-    assert result == {"hitl_modified_plan": False, "hitl_updated_beliefs": False}
+    assert result.kind is execution.ExecutionOutcomeKind.STEP_SUCCEEDED
     assert desire.status is DesireStatus.ACTIVE
-    assert len(stub_agent.intentions) == 1
-    assert stub_agent.intentions[0] is intention
+    assert stub_agent.active_intention is intention
     assert intention.active_plan.current_step_index == 1
     assert stub_agent.beliefs.get("repo_path").value == "/tmp/repo"
     assert stub_agent.beliefs.get("repository_path") is None

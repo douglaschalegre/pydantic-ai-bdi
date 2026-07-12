@@ -23,11 +23,8 @@ from voluntas.schemas.desire_schemas import (
 
 # Intention-related schemas
 from voluntas.schemas.intention_schemas import (
-    IntentionStep,
-    StepHistory,
     Intention,
-    HighLevelIntention,
-    HighLevelIntentionList,
+    PlanningDecision,
 )
 from voluntas.schemas.plan_schemas import (
     Plan,
@@ -62,15 +59,12 @@ __all__ = [
     "DesireStatus",
     "generate_desire_id",
     # Intention schemas
-    "IntentionStep",
-    "StepHistory",
     "Plan",
     "PlanStatus",
     "PlanStep",
     "PlanStepHistory",
     "Intention",
-    "HighLevelIntention",
-    "HighLevelIntentionList",
+    "PlanningDecision",
     # Reconsider schemas
     "DesireSatisfactionResult",
     "PlanReconsiderationAction",

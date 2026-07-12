@@ -4,7 +4,6 @@ This module contains the main BDI agent class that orchestrates all BDI componen
 beliefs, desires, intentions, planning, execution, monitoring, and human-in-the-loop.
 """
 
-from collections import deque
 from collections.abc import Sequence
 import json
 from pathlib import Path
@@ -26,7 +25,13 @@ from pydantic_ai.tools import BuiltinToolFunc, DeferredToolResults
 from pydantic_ai.toolsets import AbstractToolset
 
 from voluntas._utils import bcolors
-from voluntas.schemas import BeliefSet, Desire, BeliefExtractionResult, generate_desire_id
+from voluntas.schemas import (
+    BeliefExtractionResult,
+    BeliefSet,
+    Desire,
+    Intention,
+    generate_desire_id,
+)
 from voluntas.belief_updates import update_beliefs_from_desire_extraction
 from voluntas.errors import is_validation_output_error
 from voluntas.logging import (
@@ -41,6 +46,17 @@ from voluntas.execution import execute_intentions
 from voluntas.cycle import bdi_cycle
 
 T = TypeVar("T")
+
+
+class _MaterializedStreamedRunResult(Generic[T]):
+    """Expose a completed streamed run through the regular run-result API."""
+
+    def __init__(self, streamed_result: Any, output: T) -> None:
+        self._streamed_result = streamed_result
+        self.output = output
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._streamed_result, name)
 
 
 class BDI(Agent, Generic[T]):
@@ -62,6 +78,7 @@ class BDI(Agent, Generic[T]):
         structured_log_file_path: Optional[str] = None,
         usage_tracker: Optional[BDIUsageTracker] = None,
         emit_run_events_to_stdout: bool = False,
+        stream_model_requests: bool = False,
         output_retries: int = 3,  # Higher default for structured output retries
         **kwargs,
     ):
@@ -69,7 +86,7 @@ class BDI(Agent, Generic[T]):
         super().__init__(*args, output_retries=output_retries, **kwargs)
         self.beliefs = BeliefSet()
         self.desires: List[Desire] = []
-        self.intentions: deque = deque()
+        self.active_intention: Intention | None = None
         self.initial_intention_guidance: List[str] = intentions or []
         self._initial_intention_guidance_consumed = False
         self.verbose = verbose
@@ -78,6 +95,7 @@ class BDI(Agent, Generic[T]):
         self.structured_log_file_path = structured_log_file_path
         self.usage_tracker = usage_tracker
         self.emit_run_events_to_stdout = emit_run_events_to_stdout
+        self.stream_model_requests = stream_model_requests
         self._structured_log_entries: list[dict[str, Any]] = []
         self.cycle_count = 0
 
@@ -249,7 +267,7 @@ class BDI(Agent, Generic[T]):
             "bdi_beliefs": len(self.beliefs.beliefs),
             "bdi_desires": len(self.desires),
             "bdi_desire_statuses": desire_statuses,
-            "bdi_intentions": len(self.intentions),
+            "bdi_intentions": int(self.active_intention is not None),
         }
 
     def _record_usage(self, result: AgentRunResult[Any]) -> None:
@@ -323,23 +341,44 @@ class BDI(Agent, Generic[T]):
         event_stream_handler: EventStreamHandler[Any] | None = None,
     ) -> AgentRunResult[Any]:
         """Run the underlying Pydantic AI agent and capture a structured log entry."""
-        result = await super().run(
-            user_prompt=user_prompt,
-            output_type=output_type,
-            message_history=message_history,
-            deferred_tool_results=deferred_tool_results,
-            model=model,
-            instructions=instructions,
-            deps=deps,
-            model_settings=model_settings,
-            usage_limits=usage_limits,
-            usage=usage,
-            metadata=metadata,
-            infer_name=infer_name,
-            toolsets=toolsets,
-            builtin_tools=builtin_tools,
-            event_stream_handler=event_stream_handler,
-        )
+        if self.stream_model_requests:
+            async with super().run_stream(
+                user_prompt=user_prompt,
+                output_type=output_type,
+                message_history=message_history,
+                deferred_tool_results=deferred_tool_results,
+                model=model,
+                instructions=instructions,
+                deps=deps,
+                model_settings=model_settings,
+                usage_limits=usage_limits,
+                usage=usage,
+                metadata=metadata,
+                infer_name=infer_name,
+                toolsets=toolsets,
+                builtin_tools=builtin_tools,
+                event_stream_handler=event_stream_handler,
+            ) as streamed_result:
+                output = await streamed_result.get_output()
+            result = _MaterializedStreamedRunResult(streamed_result, output)
+        else:
+            result = await super().run(
+                user_prompt=user_prompt,
+                output_type=output_type,
+                message_history=message_history,
+                deferred_tool_results=deferred_tool_results,
+                model=model,
+                instructions=instructions,
+                deps=deps,
+                model_settings=model_settings,
+                usage_limits=usage_limits,
+                usage=usage,
+                metadata=metadata,
+                infer_name=infer_name,
+                toolsets=toolsets,
+                builtin_tools=builtin_tools,
+                event_stream_handler=event_stream_handler,
+            )
 
         try:
             self._record_usage(result)
@@ -361,7 +400,7 @@ class BDI(Agent, Generic[T]):
         """Generate high-level intentions from desires."""
         await generate_intentions_from_desires(self)
 
-    async def execute_intentions(self) -> dict:
+    async def execute_intentions(self):
         """Execute one step of the current intention."""
         return await execute_intentions(self)
 

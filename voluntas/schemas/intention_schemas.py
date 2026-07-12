@@ -4,11 +4,9 @@ This module contains data models for representing intentions as commitments to
 desires, plus LLM output formats for intention generation.
 """
 
-from typing import List
-
 from pydantic import BaseModel, Field
 
-from voluntas.schemas.plan_schemas import IntentionStep, Plan, StepHistory
+from voluntas.schemas.plan_schemas import Plan
 
 
 class Intention(BaseModel):
@@ -24,8 +22,8 @@ class Intention(BaseModel):
     )
 
 
-class HighLevelIntention(BaseModel):
-    """High-level intention output from intention generation."""
+class PlanningDecision(BaseModel):
+    """The single Desire and high-level Intention selected by planning."""
 
     desire_id: str = Field(
         description="The ID of the desire this intention relates to."
@@ -35,17 +33,8 @@ class HighLevelIntention(BaseModel):
     )
 
 
-class HighLevelIntentionList(BaseModel):
-    """A list of high-level intentions expected from planning."""
-
-    intentions: List[HighLevelIntention]
-
-
 __all__ = [
-    "IntentionStep",
-    "StepHistory",
     "Plan",
     "Intention",
-    "HighLevelIntention",
-    "HighLevelIntentionList",
+    "PlanningDecision",
 ]

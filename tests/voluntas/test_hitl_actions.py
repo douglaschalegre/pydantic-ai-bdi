@@ -65,7 +65,7 @@ async def test_skip_current_step_completes_intention(stub_agent) -> None:
 
     assert applied_successfully is True
     assert beliefs_updated is False
-    assert len(stub_agent.intentions) == 0
+    assert stub_agent.active_intention is None
     assert desire.status is DesireStatus.ACHIEVED
 
 
@@ -89,7 +89,7 @@ async def test_abort_intention_requeues_desire(stub_agent) -> None:
 
     assert applied_successfully is True
     assert beliefs_updated is False
-    assert len(stub_agent.intentions) == 0
+    assert stub_agent.active_intention is None
     assert desire.status is DesireStatus.PENDING
 
 
@@ -118,7 +118,7 @@ async def test_update_beliefs_and_retry_applies_belief_updates(stub_agent) -> No
     assert belief is not None
     assert belief.value == "/tmp/repo"
     assert belief.source == "human_guidance"
-    assert stub_agent.intentions[0] is intention
+    assert stub_agent.active_intention is intention
 
 
 @pytest.mark.asyncio
@@ -154,7 +154,7 @@ async def test_modify_current_step_updates_current_plan_step(stub_agent) -> None
     assert current_step.is_tool_call is True
     assert current_step.tool_name == "search"
     assert current_step.tool_params == {"query": "status"}
-    assert stub_agent.intentions[0] is intention
+    assert stub_agent.active_intention is intention
     assert desire.status is DesireStatus.ACTIVE
 
 
@@ -206,7 +206,7 @@ async def test_plan_step_list_manipulations_preserve_intention_commitment(
 
     assert applied_successfully is True
     assert beliefs_updated is False
-    assert stub_agent.intentions[0] is intention
+    assert stub_agent.active_intention is intention
     assert desire.status is DesireStatus.ACTIVE
     assert intention.active_plan.status is PlanStatus.ACTIVE
     assert intention.active_plan.current_step_index == 1

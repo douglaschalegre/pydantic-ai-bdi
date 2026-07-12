@@ -1,7 +1,6 @@
 """Centralized belief update helpers for BDI flows."""
 
 import json
-from datetime import datetime
 from difflib import SequenceMatcher
 from textwrap import dedent
 from typing import TYPE_CHECKING, Any, Dict, Iterable, Literal, Tuple, cast
@@ -9,16 +8,11 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, Literal, Tuple, cast
 from voluntas._utils import bcolors
 from voluntas.errors import is_validation_output_error
 from voluntas.logging import log_states
-from voluntas.prompts import (
-    build_belief_name_resolution_prompt,
-    build_belief_update_resolution_prompt,
-)
-from voluntas.schemas import BeliefNameResolutionDecision, BeliefUpdateDecision
 from voluntas.schemas.belief_schemas import BatchBeliefResolutionResult
 
 if TYPE_CHECKING:
     from voluntas.agent import BDI
-    from voluntas.schemas import Belief, ExtractedBelief
+    from voluntas.schemas import ExtractedBelief
 
 
 BeliefMutation = Literal["created", "updated", "unchanged"]
@@ -53,7 +47,7 @@ def _stable_value_key(value: Any) -> str:
         return repr(value)
 
 
-def _deduplicate_step_beliefs(
+def _deduplicate_beliefs(
     beliefs: Iterable[Dict[str, Any]],
 ) -> list[Dict[str, Any]]:
     deduplicated: list[Dict[str, Any]] = []
@@ -76,6 +70,7 @@ def _deduplicate_step_beliefs(
                 "name": belief_name,
                 "value": belief_value,
                 "certainty": belief_certainty,
+                "source": belief_dict["source"],
             }
         )
 
@@ -187,14 +182,34 @@ async def _llm_resolve_belief_updates_batch(
         if not result or not result.output:
             return {}
 
+        pending_by_index = {belief["index"]: belief for belief in pending_beliefs}
         decisions: Dict[int, tuple[str, bool, Any, float]] = {}
+        duplicate_indices: set[int] = set()
         for decision in result.output.decisions:
-            decisions[decision.incoming_index] = (
-                _normalize_belief_name(decision.resolved_name),
+            index = decision.incoming_index
+            pending = pending_by_index.get(index)
+            if pending is None or index in decisions:
+                duplicate_indices.add(index)
+                continue
+
+            resolved_name = _normalize_belief_name(decision.resolved_name)
+            allowed_names = {
+                pending["name"],
+                *(
+                    _normalize_belief_name(name)
+                    for name in pending["candidate_existing_names"]
+                ),
+            }
+            if resolved_name not in allowed_names:
+                continue
+            decisions[index] = (
+                resolved_name,
                 decision.should_update,
                 decision.normalized_value,
                 max(0.0, min(1.0, float(decision.certainty))),
             )
+        for index in duplicate_indices:
+            decisions.pop(index, None)
         return decisions
     except Exception as e:
         if agent.verbose and not is_validation_output_error(e):
@@ -219,9 +234,6 @@ def _fallback_batch_decision(
             pending_belief["value"],
             pending_belief["certainty"],
         )
-
-    if pending_belief["resolution_reason"] == "ambiguous_name":
-        return belief_name, True, pending_belief["value"], pending_belief["certainty"]
 
     return belief_name, True, pending_belief["value"], pending_belief["certainty"]
 
@@ -256,147 +268,29 @@ def _apply_resolved_belief_update(
     return belief_name, value_to_store, certainty_to_store, mutation
 
 
-async def _llm_resolve_belief_name(
-    agent: "BDI",
-    *,
-    incoming_name: str,
-    incoming_value: Any,
-) -> str:
-    if not agent.beliefs.beliefs:
-        return incoming_name
-
-    prompt = build_belief_name_resolution_prompt(
-        incoming_name=incoming_name,
-        incoming_value=incoming_value,
-        existing_beliefs=_current_belief_value_map(agent),
-    )
-
-    try:
-        result = await agent.run(prompt, output_type=BeliefNameResolutionDecision)
-        if result and result.output and result.output.resolved_name:
-            return _normalize_belief_name(result.output.resolved_name)
-    except Exception as e:
-        if agent.verbose and not is_validation_output_error(e):
-            print(
-                f"{bcolors.WARNING}  Belief name resolution failed for '{incoming_name}', using incoming name: {e}{bcolors.ENDC}"
-            )
-
-    return incoming_name
-
-
-async def _llm_evaluate_belief_update(
-    agent: "BDI",
-    *,
-    belief_name: str,
-    existing: "Belief",
-    incoming_value: Any,
-    incoming_certainty: float,
-    incoming_source: str,
-) -> Tuple[bool, Any, float]:
-    prompt = build_belief_update_resolution_prompt(
-        belief_name=belief_name,
-        existing_value=existing.value,
-        existing_certainty=existing.certainty,
-        incoming_value=incoming_value,
-        incoming_certainty=incoming_certainty,
-        incoming_source=incoming_source,
-    )
-
-    try:
-        decision_result = await agent.run(prompt, output_type=BeliefUpdateDecision)
-        if decision_result and decision_result.output:
-            decision = decision_result.output
-            certainty = max(0.0, min(1.0, float(decision.certainty)))
-            return decision.should_update, decision.normalized_value, certainty
-    except Exception as e:
-        if agent.verbose and not is_validation_output_error(e):
-            print(
-                f"{bcolors.WARNING}  Belief update evaluation failed for '{belief_name}', using fallback: {e}{bcolors.ENDC}"
-            )
-
-    if existing.value == incoming_value and incoming_certainty <= existing.certainty:
-        return False, existing.value, existing.certainty
-    return True, incoming_value, incoming_certainty
-
-
-async def _evaluate_and_apply_belief_update(
-    agent: "BDI",
-    *,
-    belief_name: str,
-    incoming_value: Any,
-    incoming_certainty: float,
-    source: str,
-) -> Tuple[str, Any, float, BeliefMutation]:
-    existing = agent.beliefs.get(belief_name)
-    should_update = True
-    value_to_store: Any = incoming_value
-    certainty_to_store = incoming_certainty
-
-    if existing:
-        should_update, value_to_store, certainty_to_store = (
-            await _llm_evaluate_belief_update(
-                agent,
-                belief_name=belief_name,
-                existing=existing,
-                incoming_value=incoming_value,
-                incoming_certainty=incoming_certainty,
-                incoming_source=source,
-            )
-        )
-
-    if not should_update:
-        return belief_name, value_to_store, certainty_to_store, "unchanged"
-
-    mutation = cast(
-        BeliefMutation,
-        agent.beliefs.upsert(
-            name=belief_name,
-            value=value_to_store,
-            source=source,
-            certainty=certainty_to_store,
-        ),
-    )
-    return belief_name, value_to_store, certainty_to_store, mutation
-
-
-async def update_beliefs_from_desire_extraction(
-    agent: "BDI", beliefs: Iterable["ExtractedBelief"]
-) -> BeliefStats:
-    """Apply beliefs extracted from initial desire descriptions."""
-    stats = _empty_stats()
-
-    for belief in beliefs:
-        _, _, _, mutation = await _evaluate_and_apply_belief_update(
-            agent,
-            belief_name=await _llm_resolve_belief_name(
-                agent,
-                incoming_name=_normalize_belief_name(belief.name),
-                incoming_value=belief.value,
-            ),
-            incoming_value=belief.value,
-            incoming_certainty=belief.certainty,
-            source="desire_description",
-        )
-        stats[mutation] += 1
-
-    return stats
-
-
-async def update_beliefs_from_step_extraction(
-    agent: "BDI", beliefs: Iterable[Dict[str, Any]], source: str
-) -> BeliefStats:
-    """Apply beliefs extracted from a step result."""
+async def _apply_belief_batch(
+    agent: "BDI", beliefs: Iterable[Dict[str, Any]]
+) -> tuple[BeliefStats, list[Tuple[str, Any, float, BeliefMutation]]]:
     stats = _empty_stats()
     applied_results: list[Tuple[str, Any, float, BeliefMutation]] = []
     pending_resolution: list[Dict[str, Any]] = []
+    prepared = _deduplicate_beliefs(beliefs)
+    values_by_name: Dict[str, set[str]] = {}
+    for belief in prepared:
+        values_by_name.setdefault(belief["name"], set()).add(
+            _stable_value_key(belief["value"])
+        )
 
-    for index, belief_dict in enumerate(_deduplicate_step_beliefs(beliefs)):
+    for index, belief_dict in enumerate(prepared):
         belief_name = belief_dict["name"]
         incoming_value = belief_dict["value"]
         incoming_certainty = belief_dict["certainty"]
+        source = belief_dict["source"]
         existing = agent.beliefs.get(belief_name)
 
-        if existing and existing.value != incoming_value:
+        if (existing and existing.value != incoming_value) or len(
+            values_by_name[belief_name]
+        ) > 1:
             pending_resolution.append(
                 {
                     "index": index,
@@ -451,7 +345,7 @@ async def update_beliefs_from_step_extraction(
                     belief_name=belief_name,
                     value_to_store=value_to_store,
                     certainty_to_store=certainty_to_store,
-                    source=source,
+                    source=pending_belief["source"],
                     should_update=should_update,
                 )
             )
@@ -463,6 +357,40 @@ async def update_beliefs_from_step_extraction(
                 f"{bcolors.BELIEF}    {_mutation_marker(mutation)} {belief_name}: {value_to_store} (Certainty: {certainty_to_store:.2f}) [{mutation}]{bcolors.ENDC}"
             )
 
+    return stats, applied_results
+
+
+async def update_beliefs_from_desire_extraction(
+    agent: "BDI", beliefs: Iterable["ExtractedBelief"]
+) -> BeliefStats:
+    """Apply beliefs extracted from initial desire descriptions."""
+    prepared = (
+        {
+            "name": belief.name,
+            "value": belief.value,
+            "certainty": belief.certainty,
+            "source": "desire_description",
+        }
+        for belief in beliefs
+    )
+    stats, _ = await _apply_belief_batch(agent, prepared)
+    return stats
+
+
+async def update_beliefs_from_step_extraction(
+    agent: "BDI", beliefs: Iterable[Dict[str, Any]], source: str
+) -> BeliefStats:
+    """Apply beliefs extracted from a step result."""
+    prepared = (
+        {
+            "name": belief["name"],
+            "value": belief["value"],
+            "certainty": belief.get("certainty", 0.8),
+            "source": source,
+        }
+        for belief in beliefs
+    )
+    stats, _ = await _apply_belief_batch(agent, prepared)
     return stats
 
 
@@ -470,47 +398,17 @@ async def update_beliefs_from_hitl_guidance(
     agent: "BDI", beliefs_to_update: Dict[str, Dict[str, Any]]
 ) -> bool:
     """Apply beliefs provided through human-in-the-loop guidance."""
-    beliefs_updated = False
-    stats = _empty_stats()
-
-    for name, belief_data_dict in beliefs_to_update.items():
-        incoming_name = _normalize_belief_name(name)
-        incoming_value = belief_data_dict.get("value")
-        belief_name = await _llm_resolve_belief_name(
-            agent,
-            incoming_name=incoming_name,
-            incoming_value=incoming_value,
-        )
-        belief_data_dict.setdefault("name", belief_name)
-        belief_data_dict.setdefault("source", "human_guidance")
-        belief_data_dict.setdefault("certainty", 1.0)
-        belief_data_dict.setdefault("timestamp", datetime.now().timestamp())
-
-        try:
-            belief_name, value_to_store, _, mutation = (
-                await _evaluate_and_apply_belief_update(
-                    agent,
-                    belief_name=belief_name,
-                    incoming_value=belief_data_dict["value"],
-                    incoming_certainty=belief_data_dict["certainty"],
-                    source=belief_data_dict["source"],
-                )
-            )
-
-            stats[mutation] += 1
-            beliefs_updated = beliefs_updated or mutation in {"created", "updated"}
-            if agent.verbose:
-                print(
-                    f"{bcolors.BELIEF}    {_mutation_marker(mutation)} {belief_name}: {value_to_store} (Source: human_guidance) [{mutation}]{bcolors.ENDC}"
-                )
-        except KeyError as e:
-            print(
-                f"{bcolors.FAIL}  Failed to update belief '{belief_name}' due to missing data: {e}{bcolors.ENDC}"
-            )
-        except Exception as e:
-            print(
-                f"{bcolors.FAIL}  Failed to update belief '{belief_name}': {e}{bcolors.ENDC}"
-            )
+    prepared = (
+        {
+            "name": name,
+            "value": belief_data["value"],
+            "certainty": belief_data.get("certainty", 1.0),
+            "source": belief_data.get("source", "human_guidance"),
+        }
+        for name, belief_data in beliefs_to_update.items()
+    )
+    stats, applied = await _apply_belief_batch(agent, prepared)
+    beliefs_updated = any(result[3] in {"created", "updated"} for result in applied)
 
     if beliefs_updated:
         log_states(agent, ["beliefs"], message="Beliefs updated from HITL guidance.")

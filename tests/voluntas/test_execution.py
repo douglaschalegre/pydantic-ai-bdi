@@ -18,7 +18,7 @@ from voluntas.schemas import (
 async def test_execute_intentions_no_intentions_returns_default(stub_agent) -> None:
     result = await execution.execute_intentions(stub_agent)
 
-    assert result == {"hitl_modified_plan": False, "hitl_updated_beliefs": False}
+    assert result.kind is execution.ExecutionOutcomeKind.NO_INTENTION
 
 
 @pytest.mark.asyncio
@@ -42,9 +42,9 @@ async def test_execute_intentions_completed_intention_finalizes_desire(
 
     result = await execution.execute_intentions(stub_agent)
 
-    assert result == {"hitl_modified_plan": False, "hitl_updated_beliefs": False}
+    assert result.kind is execution.ExecutionOutcomeKind.PLAN_COMPLETED
     assert desire.status is DesireStatus.ACHIEVED
-    assert len(stub_agent.intentions) == 0
+    assert stub_agent.active_intention is None
     assert plan.status is PlanStatus.COMPLETED
 
 
@@ -69,10 +69,9 @@ async def test_execute_intentions_exception_preserves_commitment_for_reconsidera
 
     result = await execution.execute_intentions(stub_agent)
 
-    assert result == {"hitl_modified_plan": False, "hitl_updated_beliefs": False}
+    assert result.kind is execution.ExecutionOutcomeKind.EXCEPTION
     assert desire.status is DesireStatus.ACTIVE
-    assert len(stub_agent.intentions) == 1
-    assert stub_agent.intentions[0] is intention
+    assert stub_agent.active_intention is intention
     assert intention.active_plan.status is PlanStatus.FAILED
     assert len(intention.active_plan.step_history) == 1
     assert intention.active_plan.step_history[0].success is False
@@ -108,9 +107,9 @@ async def test_execute_intentions_success_completes_single_step(
 
     result = await execution.execute_intentions(stub_agent)
 
-    assert result == {"hitl_modified_plan": False, "hitl_updated_beliefs": False}
+    assert result.kind is execution.ExecutionOutcomeKind.PLAN_COMPLETED
     assert desire.status is DesireStatus.ACHIEVED
-    assert len(stub_agent.intentions) == 0
+    assert stub_agent.active_intention is None
     assert intention.active_plan.status is PlanStatus.COMPLETED
     assert intention.active_plan.current_step_index == 1
     assert len(intention.active_plan.step_history) == 1
