@@ -99,8 +99,11 @@ Clone the repository and install development dependencies with uv:
 
 ```bash
 uv sync --group dev
+uv run ruff check voluntas tests scripts
 uv run pytest
 ```
+
+The CI workflow uses the same Ruff and pytest commands shown above.
 
 The repository also contains SBench and benchmark runners for research and
 experiments. The runners use a local LiteLLM proxy that exposes an
