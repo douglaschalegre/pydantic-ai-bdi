@@ -103,21 +103,6 @@ uv run ruff check voluntas tests scripts
 uv run pytest
 ```
 
-The repository also contains SBench and benchmark runners for research and
-experiments. The runners use a local LiteLLM proxy that exposes an
-OpenAI-compatible API; they are development applications and are not part of
-the published `voluntas` package.
-
-Set the proxy connection before running the local examples:
-
-```bash
-export LITELLM_BASE_URL=http://localhost:4000
-export LITELLM_API_KEY=sk-1234
-export LITELLM_MODEL=gpt-5.3-codex
-```
-
-The value of `LITELLM_MODEL` must match a model alias configured in the proxy.
-
 ## License
 
 Voluntas is released under the MIT license.
