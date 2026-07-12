@@ -6,7 +6,6 @@ import argparse
 import json
 import re
 import sys
-import tomllib
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -53,7 +52,10 @@ def update_version(root: Path, kind: str) -> str:
     package_path = root / "voluntas" / "__init__.py"
     pyproject = pyproject_path.read_text(encoding="utf-8")
     package = package_path.read_text(encoding="utf-8")
-    project_version = tomllib.loads(pyproject)["project"]["version"]
+    project_match = PROJECT_VERSION_PATTERN.search(pyproject)
+    if project_match is None:
+        raise ValueError(f"Could not find project version in {pyproject_path}.")
+    project_version = project_match.group(1)
     package_match = PACKAGE_VERSION_PATTERN.search(package)
     if package_match is None:
         raise ValueError(f"Could not find __version__ in {package_path}.")

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Literal
 from voluntas._utils import bcolors
 from voluntas.logging import format_beliefs_for_context, log_states
 from voluntas.prompts import build_desire_satisfaction_prompt
-from voluntas.schemas import DesireSatisfactionResult, DesireStatus, PlanStatus
+from voluntas.schemas import DesireSatisfactionResult, DesireStatus
 
 if TYPE_CHECKING:
     from voluntas.agent import BDI
